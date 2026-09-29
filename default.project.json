@@ -1,0 +1,56 @@
+{
+	"name": "AR2 Lobby",
+
+	"tree": {
+		"$className": "DataModel",
+
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"$ignoreUnknownInstances": true,
+
+			"Shared": {
+				"$className": "Folder",
+				"$path": "src/Shared"
+			},
+
+			"Remotes": {
+				"$className": "Folder",
+				"Directory": { "$className": "RemoteEvent" },
+				"Play": { "$className": "RemoteEvent" },
+				"Status": { "$className": "RemoteEvent" }
+			}
+		},
+
+		"ServerScriptService": {
+			"$className": "ServerScriptService",
+			"$ignoreUnknownInstances": true,
+
+			"Lobby": {
+				"$className": "Folder",
+				"$path": "src/Server"
+			}
+		},
+
+		"StarterPlayer": {
+			"$className": "StarterPlayer",
+			"$ignoreUnknownInstances": true,
+
+			"StarterPlayerScripts": {
+				"$className": "StarterPlayerScripts",
+				"$ignoreUnknownInstances": true,
+
+				"Lobby": {
+					"$className": "Folder",
+					"$path": "src/Client"
+				}
+			}
+		},
+
+		"Players": {
+			"$className": "Players",
+			"$properties": {
+				"CharacterAutoLoads": false
+			}
+		}
+	}
+}

@@ -1,0 +1,4 @@
+# Tools managed by Aftman (https://github.com/LPGhatguy/aftman).
+# After changing a version: `aftman install` then `rojo plugin install`, and restart Studio.
+[tools]
+rojo = "rojo-rbx/rojo@7.7.0"

@@ -1,0 +1,14 @@
+# Generated
+sourcemap.json
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+
+# Personal / machine-local
+CLAUDE.local.md
+.vscode/extensions.json
+
+# OS
+.DS_Store
+._*
+Thumbs.db
