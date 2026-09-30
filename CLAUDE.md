@@ -87,6 +87,14 @@ Map configs are Folders and ValueBase objects in the lobby place, read by [Place
 
 A prod place without that folder falls back to [Shared/Maps.lua](src/Shared/Maps.lua); [tools/maps-to-folders.lua](tools/maps-to-folders.lua) converts it into folders. A test place without it has no maps. Config is ServerStorage-only; clients get `PublicInfo` for the maps they may see.
 
+## Paid VIP servers forward to the host's Kin server
+The lobby place (863266079) used to be the game's Prod - Main, so hosts' paid VIP servers now boot the lobby. [VipForward.lua](src/Server/VipForward.lua) detects one (`PrivateServerId ~= ""` and `PrivateServerOwnerId ~= 0`, prod variant only), skips the browser, and teleports everyone to **the host's own reserved server on `Protocol.VIP_FORWARD_MAP` (Kin)**, reserved once and reused forever.
+- A reserved server has no `PrivateServerOwnerId`, so the lobby records the host in lobby-owned DataStores: `LobbyVipHosts1` (key = reserved PrivateServerId → `{ v, hostId, placeId, createdAt }`, what the game reads to learn its host) and `LobbyVipServers1` (key = `"<placeId>:<hostId>"` → the access code and ids). Both are rewritten on each VIP boot so they self-heal.
+- The access code never reaches a client, so the forward is the only way into a host's server; Roblox already limits who can join the paid VIP server. TeleportData `{ source, v, kind = "vip", hostId }` is informational: **the game must take the host from `LobbyVipHosts1`, never TeleportData.**
+- The game side is on branch `kinvip` (`globals.getVIPHost()` in the Kin build). It reads `LobbyVipHosts1` **once at boot and caches it**, so the lobby must write the record before the first teleport and never delete it; a server that boots before its record exists runs non-VIP until it shuts down. It only accepts `v == Protocol.VIP_VERSION` (1) and `placeId == game.PlaceId`: change the record's shape on both sides together.
+- If setup fails (no Kin place in the universe, DataStore errors after retries) the server falls back to the normal browser. Clients hide the browser while the `VipForward` attribute on ReplicatedStorage is true.
+- Studio: a `SimulateVipHost` attribute (a UserId) on ServerStorage fakes a VIP server; unpublished Studio can't reach DataStores, so it falls back to the browser after the retries.
+
 ## VIP servers (built, hidden)
 Directory entries carry a `kind` (see [Protocol.lua](src/Shared/Protocol.lua)); missing means `"public"`. Lobbies skip kinds they don't handle, and an entry only counts if it comes from a place of that kind (a map's `Vip = { [kind] = placeIds }` in Maps.lua). `Protocol.VIP_LISTING` is **off**: nothing VIP is listed or joinable until the game side exists. In Studio, a `ShowVip` attribute on ServerStorage turns on mock VIP rows.
 

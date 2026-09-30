@@ -865,10 +865,33 @@ remotes.Directory.OnClientEvent:Connect(function(payload)
 	end
 end)
 
+-- a paid VIP server sends everyone on to the host's own server, so the
+-- browser stays hidden and only the status shows
+local function forwarding()
+	return replicatedStorage:GetAttribute("VipForward") == true
+end
+
+local function drawForwarding()
+	local on = forwarding()
+
+	picker.Visible = not on and openMap == nil
+	mapView.Visible = not on and openMap ~= nil
+
+	if on then
+		setStatus("joining")
+	elseif statusBox.Visible and not joining then
+		setStatus(nil)
+	end
+end
+
+drawForwarding()
+replicatedStorage:GetAttributeChangedSignal("VipForward"):Connect(drawForwarding)
+
 remotes.Status.OnClientEvent:Connect(function(code)
 	setStatus(code)
 
-	if code ~= "joining" then
+	-- while forwarding, a failure stays up until the server retries
+	if code ~= "joining" and not forwarding() then
 		task.delay(3, function()
 			if not joining and statusBox.Text.Text == spaced(STATUS_TEXT[code] or "") then
 				setStatus(nil)

@@ -47,6 +47,24 @@ return {
 	TICKETS_MAP = "BrowserTickets1",
 	TICKET_TTL = 300,
 
+	-- paid VIP servers on the lobby place forward everyone to the host's own
+	-- reserved server on this map (VipForward.lua). The lobby records who the
+	-- host is, since a reserved server has no PrivateServerOwnerId:
+	--   VIP_HOSTS_STORE    DataStore, key = reserved PrivateServerId
+	--                      -> { v, hostId, placeId, createdAt }
+	--                      the game looks itself up here to learn its host
+	--   VIP_SERVERS_STORE  DataStore, key = "<placeId>:<hostId>"
+	--                      -> { v, hostId, placeId, accessCode, privateServerId, createdAt }
+	--                      one reserved server per host, reused forever
+	-- Arrivals carry TeleportData { source, v, kind = "vip", hostId }, which is
+	-- informational only: never trust it for who the host is
+	VIP_FORWARD_MAP = "Kin",
+	-- the game (branch kinvip, globals.getVIPHost) only accepts v == 1: bump
+	-- both sides together, and never with VERSION
+	VIP_VERSION = 1,
+	VIP_HOSTS_STORE = "LobbyVipHosts1",
+	VIP_SERVERS_STORE = "LobbyVipServers1",
+
 	-- the test lobby replaces the AR2 Development Hub in its place and keeps
 	-- the hub's names, so test servers' Hub Beacon and join lock work unchanged
 	-- (game repo: src/Server/Configs/HubProtocol.lua)

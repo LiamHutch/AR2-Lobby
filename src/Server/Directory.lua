@@ -361,8 +361,18 @@ function library:Server(mapKey, jobId)
 	return nil
 end
 
+local resolved = false
+
+-- which place each map uses in this universe; safe to call more than once
+function library:Resolve()
+	if not resolved then
+		resolved = true
+		resolvePlaces()
+	end
+end
+
 function library:Start()
-	resolvePlaces()
+	self:Resolve()
 
 	if catalog.IsTest and not mocking then
 		local placeIds = {}
