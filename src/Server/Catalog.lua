@@ -23,6 +23,11 @@ local library = {}
 ----
 
 local function pickVariant()
+	-- the ProdDemo toggle in ServerStorage (Mock.lua) is the prod lobby on a fake list
+	if require(script.Parent.Mock).ProdDemo then
+		return "prod"
+	end
+
 	-- set a LobbyVariant attribute ("test" or "prod") on ServerStorage to try the other one in Studio
 	local override = runService:IsStudio() and serverStorage:GetAttribute("LobbyVariant")
 
@@ -152,6 +157,7 @@ function library:PublicInfo(map, live)
 		Accent = map.Accent,
 		Blurb = map.Blurb,
 		Stats = stats,
+		Tags = map.Tags,
 		Platforms = map.Platforms,
 		Images = map.Images,
 		Backdrop = map.Backdrop,

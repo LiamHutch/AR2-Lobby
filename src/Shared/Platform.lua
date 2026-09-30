@@ -1,6 +1,7 @@
 -- Which platform this client is on, for the per-map support notices in
--- Maps.lua. Client-only. This is advisory: a client could lie about it, which
--- only hurts that client.
+-- Maps.lua and the platform-only server pools. Detect is client-only; the
+-- lobby server uses the rest to check what a client says it's on. A client
+-- could lie about it: that only keeps honest players out of the wrong pool.
 
 local guiService = game:GetService("GuiService")
 local userInputService = game:GetService("UserInputService")
@@ -9,19 +10,27 @@ local runService = game:GetService("RunService")
 
 local library = {}
 
--- display order for the chips; Icon is an image id, empty shows Short as text
+-- display order for the chips; Icon is an image id, empty shows Short as text.
+-- Pool is the platform-only server pool it may join (Protocol.POOLS); PC only
+-- ever gets the Any servers
 library.List = {
 	{ Key = "PC", Short = "PC", Long = "PC", Icon = "" },
-	{ Key = "Xbox", Short = "XBOX", Long = "XBOX", Icon = "" },
-	{ Key = "PS4", Short = "PS4", Long = "PS4", Icon = "" },
-	{ Key = "PS5", Short = "PS5", Long = "PS5", Icon = "" },
-	{ Key = "Mobile", Short = "MOBILE", Long = "MOBILE", Icon = "" },
+	{ Key = "Xbox", Short = "XBOX", Long = "XBOX", Icon = "", Pool = "console" },
+	{ Key = "PS4", Short = "PS4", Long = "PS4", Icon = "", Pool = "console" },
+	{ Key = "PS5", Short = "PS5", Long = "PS5", Icon = "", Pool = "console" },
+	{ Key = "Mobile", Short = "MOBILE", Long = "MOBILE", Icon = "", Pool = "mobile" },
 }
 
 -- what Detect can return but has no chip of its own: Roblox doesn't tell
 -- scripts a PS4 from a PS5, so a PlayStation client is either
 library.Groups = {
-	PlayStation = { Long = "PLAYSTATION", Covers = { "PS4", "PS5" } },
+	PlayStation = { Long = "PLAYSTATION", Covers = { "PS4", "PS5" }, Pool = "console" },
+}
+
+-- names for the pools' buttons and rows
+library.Pools = {
+	console = { Long = "CONSOLE" },
+	mobile = { Long = "MOBILE" },
 }
 
 library.ByKey = {}
@@ -31,7 +40,7 @@ for _, platform in library.List do
 end
 
 for key, group in library.Groups do
-	library.ByKey[key] = { Key = key, Long = group.Long }
+	library.ByKey[key] = { Key = key, Long = group.Long, Pool = group.Pool }
 end
 
 ----
@@ -100,6 +109,25 @@ function library:Support(map, platformKey)
 	end
 
 	return "warn", self.ByKey[worstKey].Long, worst
+end
+
+-- the platform-only pool `platformKey` may join, or nil (PC, or unknown)
+function library:PoolFor(platformKey)
+	local entry = self.ByKey[platformKey]
+
+	return entry and entry.Pool
+end
+
+-- true unless every platform in the pool is blocked on this map (Beta Map
+-- has no mobile servers, since Mobile can't play it)
+function library:PoolOpen(map, pool)
+	for _, entry in self.List do
+		if entry.Pool == pool and level(map, entry.Key) ~= "blocked" then
+			return true
+		end
+	end
+
+	return false
 end
 
 return library

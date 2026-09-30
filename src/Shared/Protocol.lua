@@ -32,8 +32,11 @@
 --     placeVersion = number,  -- game.PlaceVersion, spots outdated servers
 --     region = string?,       -- the game's "City - Region", e.g. "Ashburn - Virginia"
 --     kind = string?,         -- see KINDS; missing means "public"
---     privateServerId = string?, -- test directory only: single-server maps
---                             -- list just their shared reserved server
+--     privateServerId = string?, -- test directory: every server (single-server
+--                             -- maps list just their shared one). Prod: pool
+--                             -- servers only (see Pools below)
+--     pool = string?,         -- pool servers only: the pool from the lobby's
+--                             -- TeleportData, "console" or "mobile"
 --
 --     -- VIP kinds only (never an access code or PrivateServerId):
 --     hostId = number,        -- the host's UserId
@@ -47,8 +50,20 @@
 --   freeroam  a host's VIP Freeroam server, one persistent reserved server
 --             per host; joined through the lobby's ticket, never directly
 --
+-- Pools: platform-only servers (the lobby's Pools.lua). "Any" is a map's
+-- public servers, which Roblox matchmakes. Console-only and mobile-only
+-- servers are reserved servers the lobby keeps in a pool per map and POOLS
+-- name, reserved once and reused forever:
+--   POOLS_STORE, key "<placeId>:<pool>"
+--   -> { v = POOL_VERSION, slots = { { code, id, at } } }   (id = PrivateServerId)
+-- Lobby-only; access codes never leave lobby servers. A game server learns its
+-- pool from the first arrival's TeleportData (only the lobby holds the codes,
+-- so every arrival came from it), lists itself as kind "public" with `pool`
+-- and `privateServerId`, and writes its entry as soon as it knows. The lobby
+-- matches entries to slots by privateServerId, not by the `pool` label.
+--
 -- Teleport data the lobby sends to the game:
---   { source = SOURCE, v = VERSION, map = <Maps key>, kind?, hostId? }
+--   { source = SOURCE, v = VERSION, map = <Maps key>, kind?, hostId?, pool? }
 --
 -- Ticket the lobby writes before sending someone to a VIP server
 -- (TICKETS_MAP, key = tostring(UserId), single use, TICKET_TTL):
@@ -74,6 +89,17 @@ return {
 	VIP_LISTING = false,
 	TICKETS_MAP = "BrowserTickets1",
 	TICKET_TTL = 300,
+
+	-- platform-only servers (see Pools above and Pools.lua). Platform.lua says
+	-- which platforms belong to which pool
+	POOLS = { "console", "mobile" },
+	POOLS_STORE = "LobbyPlatformPools1",
+	POOL_VERSION = 1,
+	-- most servers one pool may ever reserve, in case something runs away
+	POOL_CAP = 50,
+	-- seconds between re-reads of a pool, to pick up slots other lobbies added
+	-- (the test directory doesn't label pool servers, so it can't prompt one)
+	POOL_REFRESH = 300,
 
 	-- paid VIP servers on the lobby place forward everyone to the host's own
 	-- reserved server on this map (VipForward.lua). The lobby records who the

@@ -8,7 +8,7 @@
 --
 -- Active holds one ModuleScript per map, named with its title. Each returns a
 -- table in the same shape as an entry in Shared/Maps.lua (Key, Accent, Blurb,
--- Stats, Platforms, Images, Backdrop, PlaceIds, Vip), plus:
+-- Stats, Tags, Platforms, Images, Backdrop, PlaceIds, Vip), plus:
 --
 --   Order         display order, then title
 --   Access        tiers that can see and join it: "Tester", "Staff",
@@ -85,6 +85,29 @@ local function stats(list)
 	return rows
 end
 
+-- { text, colour? } pairs or plain strings; colour is a hex string or Color3
+local function tags(list)
+	local rows = {}
+
+	for _, tag in type(list) == "table" and list or {} do
+		local label, color = tag, nil
+
+		if type(tag) == "table" then
+			label, color = tag[1], tag[2]
+		end
+
+		if typeof(color) == "Color3" then
+			color = "#" .. color:ToHex():upper()
+		end
+
+		if type(label) == "string" and label ~= "" then
+			table.insert(rows, { label:upper(), type(color) == "string" and color or nil })
+		end
+	end
+
+	return rows
+end
+
 -- keys are Platform.lua chips (PC, Xbox, PS4, PS5, Mobile); "PlayStation"
 -- is shorthand for both PS4 and PS5, and a generation set on its own wins
 local function platforms(support)
@@ -153,6 +176,7 @@ function library.Normalize(raw, title)
 		Accent = type(accent) == "string" and accent or DEFAULT_ACCENT,
 		Blurb = type(raw.Blurb) == "string" and raw.Blurb or "",
 		Stats = stats(raw.Stats),
+		Tags = tags(raw.Tags),
 		Platforms = platforms(raw.Platforms),
 		Images = clean(raw.Images, asset),
 		Backdrop = asset(raw.Backdrop),

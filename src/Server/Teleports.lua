@@ -5,8 +5,10 @@ local memoryStores = game:GetService("MemoryStoreService")
 local runService = game:GetService("RunService")
 
 local protocol = require(replicatedStorage.Shared.Protocol)
+local platform = require(replicatedStorage.Shared.Platform)
 local catalog = require(script.Parent.Catalog)
 local reserved = require(script.Parent.Reserved)
+local pools = require(script.Parent.Pools)
 local vip = require(script.Parent.Vip)
 
 local remotes = replicatedStorage.Remotes
@@ -20,7 +22,7 @@ local RETRIES = runService:IsStudio() and 1 or 3
 local PENDING_TIMEOUT = 20
 local MAX_PASSWORD = 100
 
--- [player] = token of the teleport in flight
+-- [player] = the teleport in flight: { attempt, slotId?, retry?, retried? }
 local pending = {}
 
 local grants = nil
@@ -28,7 +30,7 @@ local grants = nil
 ----
 
 -- "joining" | "teleporting" | "full" | "closed" | "failed" | "denied"
--- | "password" | "slow" | "unavailable" | "locked" | "banned"
+-- | "password" | "slow" | "unavailable" | "locked" | "banned" | "unsupported"
 -- title (the map's) goes with "teleporting" for the loading screen
 local function sendStatus(client, code, title)
 	remotes.Status:FireClient(client, code, title)
@@ -54,7 +56,8 @@ local function writeGrant(client, placeId)
 	end)
 end
 
-local function buildOptions(map, placeId, jobId, server)
+-- slot: the pool server's slot (Pools.lua) when going to a platform-only server
+local function buildOptions(map, placeId, jobId, server, slot, pool)
 	local options = Instance.new("TeleportOptions")
 
 	-- test places read the hub's teleport data (game repo: Hub Beacon)
@@ -62,6 +65,7 @@ local function buildOptions(map, placeId, jobId, server)
 		options:SetTeleportData({
 			source = protocol.HUB_SOURCE,
 			v = protocol.HUB_VERSION,
+			pool = pool,
 		})
 	else
 		options:SetTeleportData({
@@ -70,6 +74,8 @@ local function buildOptions(map, placeId, jobId, server)
 			map = map.Key,
 			kind = server and server.Kind or nil,
 			hostId = server and server.HostId or nil,
+			-- a pool server learns its pool from this (Protocol.lua, "Pools")
+			pool = pool,
 		})
 	end
 
@@ -78,7 +84,9 @@ local function buildOptions(map, placeId, jobId, server)
 		return options
 	end
 
-	if map.SingleServer then
+	if slot then
+		options.ReservedServerAccessCode = slot.code
+	elseif map.SingleServer then
 		local worked, info = pcall(reserved.Get, reserved, placeId)
 
 		if not worked then
@@ -121,7 +129,9 @@ local function tryTeleport(client, placeId, options)
 	return false
 end
 
-local function onPlay(directory, client, mapKey, jobId, password)
+-- pool: a platform-only pool to quick-join (nil for Any); device: the
+-- Platform.lua key the client says it's on
+local function onPlay(directory, client, mapKey, jobId, password, pool, device)
 	if pending[client] or type(mapKey) ~= "string" then
 		return
 	end
@@ -134,7 +144,7 @@ local function onPlay(directory, client, mapKey, jobId, password)
 	end
 
 	-- claimed before anything yields so a double click can't send two teleports
-	local token = {}
+	local token = { attempt = 0 }
 	pending[client] = token
 
 	local function refuse(code)
@@ -146,9 +156,20 @@ local function onPlay(directory, client, mapKey, jobId, password)
 		return refuse("denied")
 	end
 
+	-- only the client knows what it's on, so this keeps honest players out of
+	-- maps they can't play and other platforms' pools; it can't stop a liar
+	if type(device) ~= "string" or not platform.ByKey[device] then
+		device = "PC"
+	end
+
+	if platform:Support(map, device) == "blocked" then
+		return refuse("unsupported")
+	end
+
 	-- a single-server map only has the one server, whatever was picked
 	if map.SingleServer then
 		jobId = nil
+		pool = nil
 
 		if lockedServerFull(directory, map) then
 			return refuse("full")
@@ -159,6 +180,21 @@ local function onPlay(directory, client, mapKey, jobId, password)
 
 	local server = jobId and directory:Server(mapKey, jobId)
 	local isVip = server ~= nil and server.Kind ~= "public"
+
+	-- a picked server decides the pool, not the client
+	if server then
+		pool = server.Pool
+	end
+
+	if pool ~= nil then
+		if not table.find(directory:MapPools(map), pool) then
+			return refuse("closed")
+		end
+
+		if platform:PoolFor(device) ~= pool then
+			return refuse("unsupported")
+		end
+	end
 
 	if isVip then
 		if not vip.Kinds[server.Kind] then
@@ -182,53 +218,106 @@ local function onPlay(directory, client, mapKey, jobId, password)
 		return refuse(why)
 	end
 
+	-- a listed pool server: join its slot
+	local listedSlot = nil
+
+	if pool and server then
+		listedSlot = pools:Slot(placeId, pool, directory:PrivateId(server.Id))
+
+		if not listedSlot then
+			return refuse("closed")
+		end
+	end
+
 	sendStatus(client, "joining")
 
-	local options = buildOptions(map, placeId, jobId, server)
+	local function attempt()
+		token.attempt += 1
 
-	if not options then
-		return refuse("unavailable")
-	end
+		local current = token.attempt
+		local slot = listedSlot
 
-	if isVip then
-		local prepared, reason = vip:Prepare(client, server, options)
+		if pool and not server then
+			slot = pools:Pick(placeId, pool, directory:PoolRunning(mapKey, pool))
 
-		if not prepared then
-			return refuse(reason)
+			if not slot then
+				return refuse("unavailable")
+			end
+
+			-- counted before the teleport yields, so other joins see it
+			pools:Sent(slot.id)
 		end
-	end
 
-	-- without a grant the test place's lock would kick them on arrival
-	if catalog.IsTest and not writeGrant(client, placeId) then
-		return refuse("failed")
-	end
+		token.slotId = slot and slot.id
 
-	if not tryTeleport(client, placeId, options) then
-		return refuse("failed")
-	end
+		local options = buildOptions(map, placeId, jobId, server, slot, pool)
 
-	sendStatus(client, "teleporting", map.Title)
-
-	-- TeleportInitFailed covers most failures; this covers the rest
-	task.delay(PENDING_TIMEOUT, function()
-		if pending[client] == token and client.Parent then
-			clearPending(client, token)
-			sendStatus(client, "failed")
+		if not options then
+			return refuse("unavailable")
 		end
-	end)
+
+		if isVip then
+			local prepared, reason = vip:Prepare(client, server, options)
+
+			if not prepared then
+				return refuse(reason)
+			end
+		end
+
+		-- without a grant the test place's lock would kick them on arrival
+		if catalog.IsTest and not writeGrant(client, placeId) then
+			return refuse("failed")
+		end
+
+		if not tryTeleport(client, placeId, options) then
+			return refuse("failed")
+		end
+
+		sendStatus(client, "teleporting", map.Title)
+
+		-- TeleportInitFailed covers most failures; this covers the rest
+		task.delay(PENDING_TIMEOUT, function()
+			if pending[client] == token and token.attempt == current and client.Parent then
+				clearPending(client, token)
+				sendStatus(client, "failed")
+			end
+		end)
+	end
+
+	-- a quick join can pick a pool server that filled up since the directory
+	-- last said; TeleportInitFailed tries the next pick once
+	if pool and not server then
+		token.retry = attempt
+	end
+
+	attempt()
 end
 
 ----
 
 function library:Start(directory)
-	remotes.Play.OnServerEvent:Connect(function(client, mapKey, jobId, password)
-		onPlay(directory, client, mapKey, jobId, password)
+	remotes.Play.OnServerEvent:Connect(function(client, mapKey, jobId, password, pool, device)
+		onPlay(directory, client, mapKey, jobId, password, pool, device)
 	end)
 
 	teleportService.TeleportInitFailed:Connect(function(client, result)
+		local token = pending[client]
+		local full = result == Enum.TeleportResult.GameFull
+
+		if token and full and token.slotId then
+			pools:HoldFull(token.slotId)
+
+			if token.retry and not token.retried then
+				token.retried = true
+				task.spawn(token.retry)
+
+				return
+			end
+		end
+
 		pending[client] = nil
 
-		sendStatus(client, result == Enum.TeleportResult.GameFull and "full" or "failed")
+		sendStatus(client, full and "full" or "failed")
 	end)
 
 	playersService.PlayerRemoving:Connect(function(client)

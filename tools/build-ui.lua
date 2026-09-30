@@ -22,8 +22,11 @@ local SOURCE_SANS = "rbxasset://fonts/families/SourceSansPro.json"
 
 local BONE = Color3.fromRGB(229, 226, 219)
 local GOLD = Color3.fromRGB(202, 188, 131)
+-- Play's gold, brighter than the game's so the main action stands out
+local PLAY_GOLD = Color3.fromRGB(236, 210, 120)
 local GREY = Color3.fromRGB(177, 177, 177)
 local PANEL = Color3.fromRGB(27, 27, 27)
+local NAV = Color3.fromRGB(18, 18, 21) -- the game's nav bar
 local EDGE = Color3.fromRGB(98, 94, 90) -- the game's floating-panel outline
 local BLACK = Color3.new(0, 0, 0)
 
@@ -34,6 +37,21 @@ local TORN_EDGE = "rbxassetid://129891927624984"
 local BACK_ICON = "rbxassetid://90333380641559"
 
 local STAGE = Vector2.new(1440, 810)
+
+-- the game's header spacing (its spaceOut): a hair space (U+200A) between
+-- every character, so words end up split by hair, space, hair. Full spaces
+-- look far too wide
+local HAIR = utf8.char(0x200A)
+
+local function spaced(text)
+	local characters = {}
+
+	for _, code in utf8.codes(text:upper()) do
+		table.insert(characters, utf8.char(code))
+	end
+
+	return table.concat(characters, HAIR)
+end
 
 ----
 
@@ -227,8 +245,11 @@ local function button(name, size, stroke, tint, content)
 	})
 end
 
-local function textButton(name, size, label)
-	return button(name, size, GOLD, Color3.fromRGB(255, 193, 138), text("Label", {
+-- gold by default; pass BONE for the plain white ones (Join, the card's Play)
+local function textButton(name, size, label, color)
+	color = color or GOLD
+
+	return button(name, size, color, color == BONE and BONE or Color3.fromRGB(255, 193, 138), text("Label", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 0.8),
@@ -236,7 +257,7 @@ local function textButton(name, size, label)
 	}, {
 		FontFace = font(Enum.FontWeight.Heavy),
 		TextScaled = true,
-		TextColor3 = GOLD,
+		TextColor3 = color,
 		Text = label,
 	}, 4))
 end
@@ -316,7 +337,7 @@ local function passwordField()
 			FontFace = font(Enum.FontWeight.SemiBold),
 			TextSize = 18,
 			TextColor3 = BONE,
-			PlaceholderText = "P A S S W O R D",
+			PlaceholderText = spaced("Password"),
 			PlaceholderColor3 = Color3.fromRGB(120, 118, 114),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
@@ -326,6 +347,56 @@ local function passwordField()
 
 		highlight(),
 	})
+end
+
+-- filters the server list as you type (name, id, region or host)
+local function searchField()
+	return make("Frame", {
+		Name = "Search",
+		Position = UDim2.fromOffset(0, 58),
+		Size = UDim2.fromOffset(300, 32),
+		BackgroundColor3 = BLACK,
+		BackgroundTransparency = 0.3,
+		BorderSizePixel = 0,
+	}, {
+		make("UIStroke", {
+			Name = "Stroke",
+			Color = BONE,
+			Transparency = 0.6,
+			Thickness = 2,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
+
+		lift(),
+
+		make("TextBox", {
+			Name = "Input",
+			Position = UDim2.fromOffset(10, 0),
+			Size = UDim2.new(1, -20, 1, 0),
+			BackgroundTransparency = 1,
+			ClearTextOnFocus = false,
+			FontFace = font(Enum.FontWeight.SemiBold),
+			TextSize = 15,
+			TextColor3 = BONE,
+			PlaceholderText = spaced("Search"),
+			PlaceholderColor3 = Color3.fromRGB(120, 118, 114),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = "",
+			ZIndex = 3,
+		}),
+	})
+end
+
+-- Play and PlayPool keep their width until the row runs out, then shrink
+-- evenly to share it. Their labels get side room so a long one ("PLAY
+-- CONSOLE") doesn't scale up against the stroke when the row is shared
+local function flexible(object)
+	make("UIFlexItem", { FlexMode = Enum.UIFlexMode.Shrink, Parent = object })
+	object.Label.Size = UDim2.new(1, -40, 0.62, 0)
+
+	return object
 end
 
 local function list(direction, padding, extra)
@@ -488,7 +559,7 @@ local function buildPicker()
 			TextSize = 44,
 			TextColor3 = BONE,
 			TextXAlignment = Enum.TextXAlignment.Right,
-			Text = "M A P   S E L E C T I O N",
+			Text = spaced("Experiences"),
 		}, 4),
 
 		edgeFade({
@@ -686,8 +757,15 @@ local function buildInfo()
 		}, {
 			list(Enum.FillDirection.Horizontal, 12),
 			ordered(iconButton("Back", BACK_ICON), 1),
-			ordered(textButton("Play", UDim2.fromOffset(355, 60), "PLAY"), 2),
-			ordered(passwordField(), 3),
+			ordered(flexible(textButton("Play", UDim2.fromOffset(355, 60), "PLAY", PLAY_GOLD)), 2),
+			-- this platform's own servers; the client shows it where there are some
+			(function()
+				local object = ordered(flexible(textButton("PlayPool", UDim2.fromOffset(355, 60), "PLAY CONSOLE", PLAY_GOLD)), 3)
+				object.Visible = false
+
+				return object
+			end)(),
+			ordered(passwordField(), 4),
 		}),
 	})
 end
@@ -756,7 +834,7 @@ local function buildBrowser()
 			TextSize = 44,
 			TextColor3 = BONE,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Text = "S E R V E R S",
+			Text = spaced("Servers"),
 		}, 4),
 
 		make("Frame", {
@@ -772,22 +850,34 @@ local function buildBrowser()
 			sortChip("Region", "REGION", 3, 88),
 		}),
 
+		searchField(),
+
+		-- only your platform's own servers; hidden on PC
+		(function()
+			local object = sortChip("Filter", "CONSOLE ONLY", 0, 150)
+			object.AnchorPoint = Vector2.new(1, 0)
+			object.Position = UDim2.new(1, 0, 0, 59)
+			object.Visible = false
+
+			return object
+		end)(),
+
 		-- same offsets as ServerRow's cells, inside the list's 6px padding
 		make("Frame", {
 			Name = "Columns",
-			Position = UDim2.fromOffset(6, 64),
+			Position = UDim2.fromOffset(6, 100),
 			Size = UDim2.new(1, -12, 0, 18),
 			BackgroundTransparency = 1,
 		}, {
-			column("Server", "S E R V E R", UDim2.fromOffset(14, 0), UDim2.new(1, -410, 1, 0)),
-			column("Region", "R E G I O N", UDim2.new(1, -386, 0, 0), UDim2.new(0, 170, 1, 0)),
-			column("Uptime", "U P T I M E", UDim2.new(1, -206, 0, 0), UDim2.new(0, 90, 1, 0)),
-			column("Players", "P L A Y E R S", UDim2.new(1, -104, 0, 0), UDim2.new(0, 90, 1, 0), Enum.TextXAlignment.Right),
+			column("Server", spaced("Server"), UDim2.fromOffset(14, 0), UDim2.new(1, -410, 1, 0)),
+			column("Region", spaced("Region"), UDim2.new(1, -386, 0, 0), UDim2.new(0, 170, 1, 0)),
+			column("Uptime", spaced("Uptime"), UDim2.new(1, -206, 0, 0), UDim2.new(0, 90, 1, 0)),
+			column("Players", spaced("Players"), UDim2.new(1, -104, 0, 0), UDim2.new(0, 90, 1, 0), Enum.TextXAlignment.Right),
 		}),
 
 		edgeFade({
-			Position = UDim2.fromOffset(0, 88),
-			Size = UDim2.new(1, 0, 1, -88 - 96),
+			Position = UDim2.fromOffset(0, 124),
+			Size = UDim2.new(1, 0, 1, -124 - 96),
 		}, make("ScrollingFrame", {
 			Name = "List",
 			BackgroundTransparency = 1,
@@ -819,7 +909,7 @@ local function buildBrowser()
 			TextSize = 22,
 			TextColor3 = BONE,
 			TextTransparency = 0.5,
-			Text = "N O   S E R V E R S",
+			Text = spaced("No Servers"),
 		}, 2),
 
 		make("Frame", {
@@ -850,7 +940,7 @@ local function buildBrowser()
 			}, 2),
 
 			(function()
-				local object = textButton("Join", UDim2.fromOffset(200, 60), "JOIN")
+				local object = textButton("Join", UDim2.fromOffset(200, 60), "JOIN", BONE)
 				object.AnchorPoint = Vector2.new(1, 0.5)
 				object.Position = UDim2.fromScale(1, 0.5)
 
@@ -860,18 +950,20 @@ local function buildBrowser()
 	})
 end
 
--- the VIP window's backdrop: fades in from the left, torn right edge
+-- the VIP window's backdrop: fades in from the left, torn right edge. Darker
+-- than the game's so the server list reads over busy map art. It starts
+-- under the preview and eases in slowly, solid by the list's left edge (704)
 local function buildPanel()
 	return make("Frame", {
 		Name = "Panel",
-		Position = UDim2.fromOffset(644, 28),
-		Size = UDim2.fromOffset(STAGE.X - 24 - 644, STAGE.Y - 56),
-		BackgroundColor3 = PANEL,
-		BackgroundTransparency = 0.45,
+		Position = UDim2.fromOffset(380, 28),
+		Size = UDim2.fromOffset(STAGE.X - 24 - 380, STAGE.Y - 56),
+		BackgroundColor3 = NAV,
+		BackgroundTransparency = 0.25,
 		BorderSizePixel = 0,
 	}, {
 		make("UIGradient", {
-			Transparency = numbers({ { 0, 1 }, { 0.05, 1 }, { 0.13, 0 }, { 1, 0 } }),
+			Transparency = numbers({ { 0, 1 }, { 0.08, 0.93 }, { 0.16, 0.72 }, { 0.24, 0.35 }, { 0.31, 0 }, { 1, 0 } }),
 		}),
 
 		make("ImageLabel", {
@@ -880,8 +972,8 @@ local function buildPanel()
 			Size = UDim2.new(0, 10, 1, 0),
 			BackgroundTransparency = 1,
 			Image = TORN_EDGE,
-			ImageColor3 = PANEL,
-			ImageTransparency = 0.45,
+			ImageColor3 = NAV,
+			ImageTransparency = 0.25,
 			ScaleType = Enum.ScaleType.Tile,
 			TileSize = UDim2.fromOffset(10, 420),
 		}),
@@ -1007,7 +1099,7 @@ end
 local function cardTemplate()
 	return make("Frame", {
 		Name = "MapCard",
-		Size = UDim2.fromOffset(470, 640),
+		Size = UDim2.fromOffset(540, 640),
 		BackgroundColor3 = PANEL,
 		BorderSizePixel = 0,
 		Visible = false,
@@ -1044,7 +1136,7 @@ local function cardTemplate()
 			}),
 		}),
 
-		text("Title", { Position = UDim2.new(0, 28, 1, -160), Size = UDim2.new(1, -56, 0, 62), ZIndex = 2 }, {
+		text("Title", { Position = UDim2.new(0, 28, 1, -196), Size = UDim2.new(1, -56, 0, 62), ZIndex = 2 }, {
 			FontFace = font(Enum.FontWeight.Heavy),
 			TextScaled = true,
 			TextColor3 = BONE,
@@ -1053,13 +1145,24 @@ local function cardTemplate()
 			Text = "",
 		}, 4),
 
-		text("Online", { Position = UDim2.new(0, 28, 1, -94), Size = UDim2.new(1, -56, 0, 34), ZIndex = 2 }, {
+		text("Online", { Position = UDim2.new(0, 28, 1, -130), Size = UDim2.new(1, -56, 0, 34), ZIndex = 2 }, {
 			FontFace = font(Enum.FontWeight.SemiBold, Enum.FontStyle.Italic),
 			TextSize = 29,
 			TextColor3 = GREY,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Text = "",
 		}, 2),
+
+		-- the map's Tags, filled from Templates.Tag
+		make("Frame", {
+			Name = "Tags",
+			Position = UDim2.new(0, 28, 1, -86),
+			Size = UDim2.new(1, -56, 0, 24),
+			BackgroundTransparency = 1,
+			ZIndex = 3,
+		}, {
+			list(Enum.FillDirection.Horizontal, 8),
+		}),
 
 		make("Frame", {
 			Name = "Platforms",
@@ -1089,12 +1192,67 @@ local function cardTemplate()
 				TextSize = 24,
 				TextColor3 = BONE,
 				TextTransparency = 0.3,
-				Text = "C O M I N G   S O O N",
+				Text = spaced("Coming Soon"),
 			}, 2),
 		}),
 
 		highlight(),
 		hitbox(),
+
+		-- a glow round the card; the client enables it with the highlight box
+		make("UIShadow", {
+			Name = "HighlightShadow",
+			Color = Color3.fromRGB(252, 255, 159),
+			Transparency = 0.72,
+			BlurRadius = UDim.new(0, 20),
+			Offset = UDim2.new(),
+			Spread = UDim2.new(),
+			Enabled = false,
+		}),
+
+		-- one tap into a game, over the card's own hitbox
+		(function()
+			local object = textButton("Play", UDim2.fromOffset(168, 60), "PLAY", BONE)
+			object.AnchorPoint = Vector2.new(1, 1)
+			object.Position = UDim2.new(1, -28, 1, -26)
+			object.ZIndex = 11
+			object.Visible = false
+
+			return object
+		end)(),
+	})
+end
+
+local function tagTemplate()
+	return make("Frame", {
+		Name = "Tag",
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 24),
+		BackgroundColor3 = BLACK,
+		BackgroundTransparency = 0.3,
+		BorderSizePixel = 0,
+		Visible = false,
+	}, {
+		make("UIStroke", {
+			Name = "Stroke",
+			Color = BONE,
+			Thickness = 2,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
+		lift(),
+		make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }),
+
+		make("TextLabel", {
+			Name = "Label",
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromScale(0, 1),
+			BackgroundTransparency = 1,
+			FontFace = font(Enum.FontWeight.Bold),
+			TextSize = 13,
+			TextColor3 = BONE,
+			Text = "",
+		}),
 	})
 end
 
@@ -1227,6 +1385,7 @@ make("ScreenGui", {
 	-- hidden and the client shows its clones
 	make("Folder", { Name = "Templates" }, {
 		cardTemplate(),
+		tagTemplate(),
 		rowTemplate(),
 		statTemplate(),
 		chipTemplate(),

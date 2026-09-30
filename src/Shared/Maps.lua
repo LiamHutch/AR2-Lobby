@@ -7,6 +7,8 @@
 --   Accent     hex colour for the first word of the title
 --   Blurb      flavour text under the title; optional
 --   Stats      { label, value } pairs shown under the blurb
+--   Tags       { text, colour? } pairs shown under the title on the picker
+--              card; colour is hex, missing is a dull grey
 --   Platforms  support per platform key from Platform.lua (PC, Xbox, PS4,
 --              PS5, Mobile; "PlayStation" means both): "warn" shows a notice
 --              but still lets them in, "blocked" stops them joining. Unlisted
@@ -36,6 +38,10 @@ return {
 			{ "MAX PLAYERS", "32" },
 			{ "SIZE", "LARGE" },
 			{ "DETAIL", "HIGH" },
+		},
+		Tags = {
+			{ "Recommended", "#8FC46A" },
+			{ "Main", "#D9A21B" },
 		},
 		Platforms = {
 			PS4 = "blocked", -- crashes on load; PS5 is fine
@@ -72,6 +78,10 @@ return {
 			{ "MAX PLAYERS", "16" },
 			{ "SIZE", "SMALL" },
 			{ "DETAIL", "LOW" },
+		},
+		Tags = {
+			{ "Demo" },
+			{ "Lite" },
 		},
 		Platforms = {},
 		Images = {

@@ -3,11 +3,12 @@ local replicatedStorage = game:GetService("ReplicatedStorage")
 local dataStores = game:GetService("DataStoreService")
 local assetService = game:GetService("AssetService")
 local runService = game:GetService("RunService")
-local serverStorage = game:GetService("ServerStorage")
 
 local protocol = require(replicatedStorage.Shared.Protocol)
+local platform = require(replicatedStorage.Shared.Platform)
 local catalog = require(script.Parent.Catalog)
 local reserved = require(script.Parent.Reserved)
+local pools = require(script.Parent.Pools)
 local vip = require(script.Parent.Vip)
 local mock = require(script.Parent.Mock)
 
@@ -15,9 +16,11 @@ local remotes = replicatedStorage.Remotes
 
 local library = {}
 
--- [mapKey] = { Online = number, Servers = { server } }
---   server: { Id, Kind, PlaceId, Players, Max, StartedAt, Region?, Version? }
+-- [mapKey] = { Online = number, Servers = { server }, Pools = { [pool] = { server } } }
+--   server: { Id, Kind, PlaceId, Players, Max, StartedAt, Region?, Version?, Pool? }
 --           plus HostId, Host?, Locked, Tags for VIP kinds (see Vip.lua)
+-- Servers are the Any servers; Pools holds each platform-only pool's running
+-- servers (Pools.lua), for every pool the map has
 library.Snapshot = {}
 
 -- [mapKey] = placeId inside this universe
@@ -26,9 +29,8 @@ library.PlaceByMap = {}
 ----
 
 -- unpublished Studio has no universe, DataStores or teleports; fake the
--- server list so the UI can still be built and demoed. A MockDirectory
--- attribute on ServerStorage does the same in a published place, for demos
-local mocking = runService:IsStudio() and (game.GameId == 0 or serverStorage:GetAttribute("MockDirectory") == true)
+-- server list so the UI can still be built and demoed (see Mock.lua)
+local mocking = mock.Active
 
 -- prod reads the Browser Beacon's directory; test reads the Hub Beacon's.
 -- Both are sharded DataStores (see Protocol.lua)
@@ -44,6 +46,10 @@ local lastShards = {}
 -- [placeId] = { Map = mapKey, Kind = kind }; an entry only counts if it comes
 -- from a place of its own kind
 local placeInfo = {}
+
+-- [jobId] = the pool server's PrivateServerId, from the last snapshot; kept
+-- here so it never goes to clients with the rest of the server
+local privateIds = {}
 
 local lastPoll = -math.huge
 local polling = false
@@ -128,8 +134,17 @@ local function readEntries()
 
 		for placeId, info in placeInfo do
 			if info.Kind == "public" then
+				local map = catalog.ByKey[info.Map]
+
 				-- a single-server map only ever has the one server
-				table.insert(places, { placeId, catalog.ByKey[info.Map].SingleServer and 1 or nil })
+				table.insert(places, { placeId, map.SingleServer and 1 or nil })
+
+				-- every slot but the last running, so one pool join boots a server
+				for _, pool in library:MapPools(map) do
+					local ids = pools:Ids(placeId, pool)
+					table.remove(ids)
+					table.insert(places, { placeId, nil, nil, { name = pool, ids = ids } })
+				end
 			elseif vip.Kinds[info.Kind] then
 				table.insert(places, { placeId, 5, info.Kind })
 			end
@@ -254,12 +269,20 @@ end
 
 local function buildSnapshot(entries)
 	local snapshot = {}
+	local ids = {}
 
 	for _, map in catalog.Maps do
-		snapshot[map.Key] = {
+		local bucket = {
 			Online = 0,
 			Servers = {},
+			Pools = {},
 		}
+
+		for _, pool in library:MapPools(map) do
+			bucket.Pools[pool] = {}
+		end
+
+		snapshot[map.Key] = bucket
 	end
 
 	for _, entry in entries do
@@ -294,7 +317,28 @@ local function buildSnapshot(entries)
 			Version = tonumber(entry.placeVersion),
 		}
 
-		if kind == "public" then
+		local bucket = snapshot[info.Map]
+		local list = bucket.Servers
+
+		-- a pool server is known by its PrivateServerId, whatever it calls itself
+		local pool = kind == "public" and type(entry.privateServerId) == "string" and pools:Lookup(entry.placeId, entry.privateServerId)
+
+		if pool then
+			-- a pool the map no longer offers (its platforms got blocked)
+			if not bucket.Pools[pool] then
+				continue
+			end
+
+			server.Pool = pool
+			ids[entry.jobId] = entry.privateServerId
+			list = bucket.Pools[pool]
+		elseif kind == "public" and type(entry.pool) == "string" and table.find(protocol.POOLS, entry.pool) then
+			-- labelled as a pool server we don't know yet: another lobby grew
+			-- the pool since we read it. Left out until we have its slot
+			pools:Prompt(entry.placeId, entry.pool)
+
+			continue
+		elseif kind == "public" then
 			if not belongs(catalog.ByKey[info.Map], entry) then
 				continue
 			end
@@ -310,20 +354,27 @@ local function buildSnapshot(entries)
 			end
 		end
 
-		local bucket = snapshot[info.Map]
 		bucket.Online += players
-		table.insert(bucket.Servers, server)
+		table.insert(list, server)
 	end
 
-	for _, bucket in snapshot do
-		table.sort(bucket.Servers, sortServers)
+	local function trim(servers)
+		table.sort(servers, sortServers)
 
-		for index = #bucket.Servers, protocol.MAX_SERVERS_PER_MAP + 1, -1 do
-			bucket.Servers[index] = nil
+		for index = #servers, protocol.MAX_SERVERS_PER_MAP + 1, -1 do
+			servers[index] = nil
 		end
 	end
 
-	return snapshot
+	for _, bucket in snapshot do
+		trim(bucket.Servers)
+
+		for _, servers in bucket.Pools do
+			trim(servers)
+		end
+	end
+
+	return snapshot, ids
 end
 
 -- each player only hears about the maps they may see (the test lobby hides
@@ -334,7 +385,10 @@ local function send(client)
 
 	for _, map in catalog.Maps do
 		if catalog:CanSee(client, map) then
-			table.insert(visible, catalog:PublicInfo(map, library.PlaceByMap[map.Key] ~= nil))
+			local public = catalog:PublicInfo(map, library.PlaceByMap[map.Key] ~= nil)
+			public.Pools = library:MapPools(map)
+
+			table.insert(visible, public)
 			servers[map.Key] = library.Snapshot[map.Key]
 		end
 	end
@@ -375,36 +429,82 @@ local function poll()
 	end
 
 	interval = baseInterval * jitter
-	library.Snapshot = buildSnapshot(entries)
+	library.Snapshot, privateIds = buildSnapshot(entries)
 	sendAll()
+
+	-- whatever GetAsync budget the directory left, beyond a poll's worth kept
+	-- back for joins
+	if not mocking then
+		local budget = dataStores:GetRequestBudgetForRequestType(Enum.DataStoreRequestType.GetAsync)
+		pools:RefreshStale(budget - shardCount)
+	end
 end
 
 ----
 
-function library:HasServer(mapKey, jobId)
-	local bucket = self.Snapshot[mapKey]
-
-	if bucket then
-		for _, server in bucket.Servers do
-			if server.Id == jobId then
-				return true
-			end
-		end
-	end
-
-	return false
-end
-
 function library:Server(mapKey, jobId)
 	local bucket = self.Snapshot[mapKey]
 
-	for _, server in bucket and bucket.Servers or {} do
+	if not bucket then
+		return nil
+	end
+
+	for _, server in bucket.Servers do
 		if server.Id == jobId then
 			return server
 		end
 	end
 
+	for _, servers in bucket.Pools do
+		for _, server in servers do
+			if server.Id == jobId then
+				return server
+			end
+		end
+	end
+
 	return nil
+end
+
+function library:HasServer(mapKey, jobId)
+	return self:Server(mapKey, jobId) ~= nil
+end
+
+-- the platform-only pools a map offers: all of them, except on single-server
+-- maps (one shared server) and pools whose every platform is blocked there
+function library:MapPools(map)
+	local list = {}
+
+	if not map.SingleServer then
+		for _, pool in protocol.POOLS do
+			if platform:PoolOpen(map, pool) then
+				table.insert(list, pool)
+			end
+		end
+	end
+
+	return list
+end
+
+-- { [privateServerId] = server } for a pool's running servers, for Pools:Pick
+function library:PoolRunning(mapKey, pool)
+	local bucket = self.Snapshot[mapKey]
+	local running = {}
+
+	for _, server in bucket and bucket.Pools[pool] or {} do
+		local id = privateIds[server.Id]
+
+		if id then
+			running[id] = server
+		end
+	end
+
+	return running
+end
+
+-- a listed pool server's PrivateServerId
+function library:PrivateId(jobId)
+	return privateIds[jobId]
 end
 
 local resolved = false
@@ -421,6 +521,13 @@ function library:Start()
 	self:Resolve()
 
 	local placeIds = {}
+	local poolList = {}
+
+	for mapKey, placeId in self.PlaceByMap do
+		for _, pool in self:MapPools(catalog.ByKey[mapKey]) do
+			table.insert(poolList, { placeId, pool })
+		end
+	end
 
 	if catalog.IsTest and not mocking then
 		for mapKey, placeId in self.PlaceByMap do
@@ -451,6 +558,9 @@ function library:Start()
 		-- the first read waits for the shared servers' ids, so a stray server
 		-- doesn't show on the first poll and vanish on the next
 		reserved:Prefetch(placeIds, 10)
+
+		-- and the pools, so their servers don't list as Any servers first
+		pools:Prefetch(poolList, 10)
 
 		while true do
 			if os.clock() - lastPoll >= interval and #playersService:GetPlayers() > 0 then

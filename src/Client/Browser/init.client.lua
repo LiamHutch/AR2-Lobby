@@ -48,6 +48,11 @@ end
 local cardRow = scroller(picker, "Maps")
 local serverList = scroller(browser, "List")
 
+-- optional: the list's search box and its platform-only filter chip
+local searchBox = browser:FindFirstChild("Search")
+local search = searchBox and searchBox:FindFirstChild("Input")
+local filterChip = browser:FindFirstChild("Filter")
+
 -- optional: without it teleports use Roblox's default screen
 local loadingGui = script.Parent:FindFirstChild("LoadingGui")
 
@@ -78,12 +83,14 @@ local QUICK = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out
 local AMBIENT_FADE = TweenInfo.new(8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 
 local BONE = Color3.fromRGB(229, 226, 219)
-local GOLD = Color3.fromRGB(202, 188, 131)
-local GRUNGE_TINT = Color3.fromRGB(255, 193, 138)
 local AMBER = Color3.fromRGB(227, 166, 74)
 local DIM = Color3.fromRGB(85, 85, 85)
 local LOCKED_STROKE = Color3.fromRGB(124, 124, 124)
 local LOCKED_TINT = Color3.fromRGB(193, 193, 193)
+-- a platform a map can't run on: said plainly, not just greyed out
+local BLOCKED = Color3.fromRGB(214, 92, 74)
+-- tags without a colour of their own
+local DULL = Color3.fromRGB(150, 147, 141)
 
 local STATUS_TEXT = {
 	joining = "joining",
@@ -96,6 +103,7 @@ local STATUS_TEXT = {
 	unavailable = "unavailable",
 	locked = "server locked",
 	banned = "banned from server",
+	unsupported = "not available on your platform",
 }
 
 -- sort chip name -> mode
@@ -106,6 +114,9 @@ local SORTS = {
 }
 
 local here = platform:Detect()
+
+-- the platform-only pool this client can join (console, mobile), nil on PC
+local myPool = platform:PoolFor(here)
 
 -- the server sends the maps this player may see (the test lobby hides some
 -- by group role), in display order, with each one's servers
@@ -119,20 +130,24 @@ local rows = {} -- [jobId] = row
 local openMap = nil
 local selectedId = nil
 local sortMode = "players"
+local poolOnly = false
 local joining = false
 
 ----
 
--- "Beta Map" -> "B E T A   M A P", the game's header style
-local function spaced(text)
-	local words = {}
+-- the game's header style (its spaceOut): "Beta Map" -> "BETA MAP" with a
+-- hair space (U+200A) between every character, so words split by hair,
+-- space, hair. Full spaces look far too wide
+local HAIR = utf8.char(0x200A)
 
-	for word in text:upper():gmatch("%S+") do
-		local letters = word:gsub("(.)", "%1 ")
-		table.insert(words, (letters:gsub(" $", "")))
+local function spaced(text)
+	local characters = {}
+
+	for _, code in utf8.codes(text:upper()) do
+		table.insert(characters, utf8.char(code))
 	end
 
-	return table.concat(words, "   ")
+	return table.concat(characters, HAIR)
 end
 
 local function titleText(map)
@@ -143,6 +158,11 @@ end
 local function setText(box, text)
 	box.Text.Text = text
 	box.Shadow.Text = (text:gsub("<[^>]+>", ""))
+end
+
+-- "1 server", "3 servers"
+local function count(amount, noun)
+	return string.format("%d %s%s", amount, noun, amount == 1 and "" or "s")
 end
 
 local function formatUptime(seconds)
@@ -229,12 +249,23 @@ local function bindButton(frame, callback, sound)
 	end)
 end
 
--- greys a gold button out like the game's Locked/Full buttons
+-- [button frame] = { stroke, tint, label }: its colours as built in the place
+local authored = {}
+
+-- greys a button out like the game's Locked/Full buttons, and back to the
+-- colours it has in the place
 local function setEnabled(frame, enabled)
+	local colors = authored[frame]
+
+	if not colors then
+		colors = { frame.Stroke.Color, frame.Backdrop.ImageColor3, frame.Label.Text.TextColor3 }
+		authored[frame] = colors
+	end
+
 	frame:SetAttribute("Disabled", not enabled)
-	frame.Stroke.Color = enabled and GOLD or LOCKED_STROKE
-	frame.Backdrop.ImageColor3 = enabled and GRUNGE_TINT or LOCKED_TINT
-	frame.Label.Text.TextColor3 = enabled and GOLD or DIM
+	frame.Stroke.Color = enabled and colors[1] or LOCKED_STROKE
+	frame.Backdrop.ImageColor3 = enabled and colors[2] or LOCKED_TINT
+	frame.Label.Text.TextColor3 = enabled and colors[3] or DIM
 	frame.Button.Selectable = enabled
 
 	if not enabled then
@@ -259,7 +290,7 @@ local function drawChips(bin, map)
 
 	for index, entry in platform.List do
 		local support = platform:Support(map, entry.Key)
-		local color = support == "blocked" and DIM or support == "warn" and AMBER or BONE
+		local color = support == "blocked" and BLOCKED or support == "warn" and AMBER or BONE
 		local chip = templates.PlatformChip:Clone()
 
 		chip.Name = entry.Key
@@ -284,24 +315,68 @@ local function drawChips(bin, map)
 	end
 end
 
+-- "#D9A21B" -> Color3, or `fallback` if it isn't one
+local function hexColor(hex, fallback)
+	local worked, color = pcall(Color3.fromHex, hex or "")
+
+	return worked and color or fallback
+end
+
+local function drawTags(bin, map)
+	clear(bin)
+
+	local template = templates:FindFirstChild("Tag")
+
+	for index, tag in template and map.Tags or {} do
+		local color = hexColor(tag[2], DULL)
+		local chip = template:Clone()
+
+		chip.LayoutOrder = index
+		chip.Label.Text = tag[1]
+		chip.Label.TextColor3 = color
+		chip.Stroke.Color = color
+		chip.Visible = true
+		chip.Parent = bin
+	end
+
+	bin.Visible = #(map.Tags or {}) > 0
+end
+
+-- true if this client's platform can't play the map at all
+local function blockedHere(map)
+	return platform:Support(map, here) == "blocked"
+end
+
+-- the platform-only pool this client can quick-join on the map, if any
+local function poolHere(map)
+	return myPool and table.find(map.Pools or {}, myPool) and myPool or nil
+end
+
 ----
 
-local function play(mapKey, jobId)
-	local map = openMap
+-- jobId: a server from the list; pool: quick-join a platform-only pool
+-- instead of the Any servers
+local function play(mapKey, jobId, pool)
+	local map = mapsByKey[mapKey]
 
-	if joining or not map or map.Key ~= mapKey or not liveMaps[mapKey] then
+	if joining or not map or not liveMaps[mapKey] or blockedHere(map) then
 		return
 	end
 
-	if platform:Support(map, here) == "blocked" then
-		return
-	end
+	-- only the map view has the password field
+	local password = nil
 
-	local password = map.Password and info.Buttons.Password.Input.Text or nil
+	if map.Password then
+		if openMap ~= map then
+			return
+		end
+
+		password = info.Buttons.Password.Input.Text
+	end
 
 	setStatus("joining")
 	loading.Prepare(map.Title)
-	remotes.Play:FireServer(mapKey, jobId, password)
+	remotes.Play:FireServer(mapKey, jobId, password, pool, here)
 end
 
 ----
@@ -335,6 +410,24 @@ local function sortServers(servers)
 
 		return a.Id < b.Id
 	end)
+end
+
+-- a search matches the server's name, id, region or VIP host
+local function matches(server, query)
+	local fields = {
+		names:ForJob(server.Id),
+		server.Id,
+		server.Region or "",
+		server.Host or "",
+	}
+
+	for _, field in fields do
+		if field:lower():find(query, 1, true) then
+			return true
+		end
+	end
+
+	return false
 end
 
 local drawServers
@@ -379,8 +472,26 @@ function drawServers()
 	end
 
 	local bucket = snapshot[openMap.Key]
-	local servers = table.clone(bucket and bucket.Servers or {})
+	local pool = poolHere(openMap)
+	local query = search and search.Text:lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
+	local servers = {}
 	local now = workspace:GetServerTimeNow()
+
+	-- PC only sees the Any servers; everyone else also sees their own pool's,
+	-- or only those with the filter on
+	local sources = { pool and poolOnly and {} or (bucket and bucket.Servers or {}) }
+
+	if pool and bucket and bucket.Pools then
+		table.insert(sources, bucket.Pools[pool] or {})
+	end
+
+	for _, source in sources do
+		for _, server in source do
+			if query == "" or matches(server, query) then
+				table.insert(servers, server)
+			end
+		end
+	end
 	local picked = nil
 	local seen = {}
 	local newest = 0
@@ -408,6 +519,11 @@ function drawServers()
 
 	local function idLine(server)
 		local line = server.Kind ~= "public" and ("VIP  ·  " .. (server.Host or "…")) or names:ShortId(server.Id)
+
+		if server.Pool then
+			line = platform.Pools[server.Pool].Long .. " ONLY  ·  " .. line
+		end
+
 		local build = version(server)
 
 		return build and (line .. "  ·  " .. build) or line
@@ -493,20 +609,31 @@ function drawServers()
 		setText(footer.Meta, "")
 	end
 
-	setEnabled(footer.Join, picked ~= nil and platform:Support(openMap, here) ~= "blocked")
+	footer.Join.Visible = not blockedHere(openMap)
+	setEnabled(footer.Join, picked ~= nil)
 
 	setText(info.Counts.Online, string.format("%d online", bucket and bucket.Online or 0))
-	setText(info.Counts.Servers, string.format("%d servers", #servers))
+	setText(info.Counts.Servers, count(#servers, "server"))
+end
+
+local function drawChip(chip, on)
+	chip.Label.TextTransparency = on and 0 or 0.5
+	chip.Stroke.Transparency = on and 0.35 or 0.8
+	chip.BackgroundTransparency = on and 0 or 0.2
 end
 
 local function drawSorts()
 	for chipName, mode in SORTS do
-		local chip = browser.Sorts[chipName]
-		local on = mode == sortMode
+		drawChip(browser.Sorts[chipName], mode == sortMode)
+	end
 
-		chip.Label.TextTransparency = on and 0 or 0.5
-		chip.Stroke.Transparency = on and 0.35 or 0.8
-		chip.BackgroundTransparency = on and 0 or 0.2
+	-- the platform filter only means something with a pool to filter to
+	if filterChip then
+		local pool = openMap and poolHere(openMap)
+
+		filterChip.Visible = pool ~= nil
+		filterChip.Label.Text = pool and (platform.Pools[pool].Long .. " ONLY") or ""
+		drawChip(filterChip, pool ~= nil and poolOnly)
 	end
 end
 
@@ -588,10 +715,30 @@ local function drawNotice(map)
 		info.Notice.Text.TextColor3 = AMBER
 	elseif support == "blocked" then
 		setText(info.Notice, spaced("not available on " .. long))
-		info.Notice.Text.TextColor3 = LOCKED_TINT
+		info.Notice.Text.TextColor3 = BLOCKED
 	end
+end
 
-	setEnabled(info.Buttons.Play, support ~= "blocked")
+-- Play joins an Any server. With a pool for this platform, a second button
+-- joins a platform-only one: "PLAY ANY" and "PLAY CONSOLE". A platform the
+-- map can't run on gets neither
+local function drawPlayButtons(map)
+	local buttons = info.Buttons
+	local poolButton = buttons:FindFirstChild("PlayPool")
+	local blocked = blockedHere(map)
+	local pool = not blocked and poolButton ~= nil and poolHere(map) or nil
+
+	buttons.Play.Visible = not blocked
+	buttons.Password.Visible = map.Password == true and not blocked
+	setText(buttons.Play.Label, pool and "PLAY ANY" or "PLAY")
+
+	if poolButton then
+		poolButton.Visible = pool ~= nil
+
+		if pool then
+			setText(poolButton.Label, "PLAY " .. platform.Pools[pool].Long)
+		end
+	end
 end
 
 local function openMapView(map)
@@ -627,8 +774,8 @@ local function openMapView(map)
 
 	drawChips(info.Platforms, map)
 	drawNotice(map)
+	drawPlayButtons(map)
 
-	info.Buttons.Password.Visible = map.Password == true
 	info.Buttons.Password.Input.Text = ""
 
 	if map.Backdrop then
@@ -639,6 +786,7 @@ local function openMapView(map)
 	end
 
 	startSlides(map.Images or {})
+	drawSorts()
 	drawServers()
 
 	picker.Visible = false
@@ -683,8 +831,23 @@ local function drawCard(map)
 	card.Online.Visible = live and bucket ~= nil
 	card.Button.Selectable = live
 
+	-- one tap into a game: this platform's own servers where it has them, Any
+	-- otherwise. Password maps open instead, since the field is in the map view
+	local quick = card:FindFirstChild("Play")
+
+	if quick then
+		quick.Visible = live and not blockedHere(map) and not map.Password
+	end
+
+	-- every server the map has up, platform-only ones included, like Online
 	if bucket then
-		setText(card.Online, string.format("%d online", bucket.Online))
+		local servers = #bucket.Servers
+
+		for _, pool in bucket.Pools or {} do
+			servers += #pool
+		end
+
+		setText(card.Online, string.format("%d online  ·  %s", bucket.Online, count(servers, "server")))
 	end
 end
 
@@ -696,6 +859,52 @@ local function makeCard(map, index)
 
 	setText(card.Title, titleText(map))
 	drawChips(card.Platforms, map)
+
+	if card:FindFirstChild("Tags") then
+		drawTags(card.Tags, map)
+	end
+
+	local quick = card:FindFirstChild("Play")
+
+	-- the card highlights on hover, except while the pointer is on its Play
+	-- button, which has its own highlight. Enter/leave fire by position even
+	-- under another object, so the card can't tell on its own
+	local overCard, overQuick = false, false
+
+	-- optional: a glow round the card that goes with its highlight box
+	local glow = card:FindFirstChild("HighlightShadow")
+
+	local function drawHighlight()
+		local on = overCard and not overQuick and liveMaps[map.Key] == true
+
+		card.HighlightBox.Visible = on
+
+		if glow then
+			glow.Enabled = on
+		end
+	end
+
+	drawHighlight()
+
+	if quick then
+		bindButton(quick, function()
+			local current = mapsByKey[map.Key]
+
+			if current then
+				play(current.Key, nil, poolHere(current))
+			end
+		end)
+
+		quick.Button.MouseEnter:Connect(function()
+			overQuick = true
+			drawHighlight()
+		end)
+
+		quick.Button.MouseLeave:Connect(function()
+			overQuick = false
+			drawHighlight()
+		end)
+	end
 
 	local art = card.Clip:FindFirstChild("Art")
 
@@ -717,11 +926,13 @@ local function makeCard(map, index)
 	end)
 
 	card.Button.MouseEnter:Connect(function()
-		card.HighlightBox.Visible = liveMaps[map.Key] == true
+		overCard = true
+		drawHighlight()
 	end)
 
 	card.Button.MouseLeave:Connect(function()
-		card.HighlightBox.Visible = false
+		overCard = false
+		drawHighlight()
 	end)
 
 	card.Button.Activated:Connect(function()
@@ -780,6 +991,8 @@ local function syncMaps(list)
 	if openMap then
 		if mapsByKey[openMap.Key] then
 			openMap = mapsByKey[openMap.Key]
+			drawPlayButtons(openMap)
+			drawSorts()
 		else
 			closeMapView()
 		end
@@ -959,6 +1172,14 @@ bindButton(info.Buttons.Play, function()
 	end
 end)
 
+if info.Buttons:FindFirstChild("PlayPool") then
+	bindButton(info.Buttons.PlayPool, function()
+		if openMap then
+			play(openMap.Key, nil, poolHere(openMap))
+		end
+	end)
+end
+
 bindButton(footer.Join, function()
 	if openMap and selectedId then
 		play(openMap.Key, selectedId)
@@ -980,6 +1201,29 @@ for chipName, mode in SORTS do
 		playSound("Click")
 		sortMode = mode
 		drawSorts()
+		drawServers()
+	end)
+end
+
+if filterChip then
+	filterChip.Button.MouseEnter:Connect(function()
+		filterChip.HighlightBox.Visible = true
+	end)
+
+	filterChip.Button.MouseLeave:Connect(function()
+		filterChip.HighlightBox.Visible = false
+	end)
+
+	filterChip.Button.Activated:Connect(function()
+		playSound("Click")
+		poolOnly = not poolOnly
+		drawSorts()
+		drawServers()
+	end)
+end
+
+if search then
+	search:GetPropertyChangedSignal("Text"):Connect(function()
 		drawServers()
 	end)
 end
