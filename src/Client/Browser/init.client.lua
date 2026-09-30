@@ -5,6 +5,8 @@ local tweenService = game:GetService("TweenService")
 local guiService = game:GetService("GuiService")
 local contextActionService = game:GetService("ContextActionService")
 local soundService = game:GetService("SoundService")
+local gamepadService = game:GetService("GamepadService")
+local userInputService = game:GetService("UserInputService")
 
 -- Runs from ReplicatedFirst next to the Lobby gui. Characters never load in the
 -- lobby, so StarterGui is never copied into PlayerGui; we move the gui ourselves.
@@ -1173,6 +1175,31 @@ end)
 local selection = templates.Selection:Clone()
 selection.Visible = true
 playerGui.SelectionImageObject = selection
+
+-- the lobby is all buttons, so a gamepad always drives the cursor: it's
+-- turned on whenever a pad is in use (or on console) and off, including
+-- after Select toggles it away, which confused players. Left alone while
+-- Roblox's own menu is open. The game's Input library does the same
+local function keepCursor()
+	if guiService.MenuIsOpen or gamepadService.GamepadCursorEnabled then
+		return
+	end
+
+	local padInUse = userInputService:GetLastInputType().Name:find("^Gamepad") ~= nil
+
+	if padInUse or guiService:IsTenFootInterface() then
+		pcall(gamepadService.EnableGamepadCursor, gamepadService, nil)
+	end
+end
+
+userInputService.LastInputTypeChanged:Connect(keepCursor)
+guiService.MenuClosed:Connect(keepCursor)
+
+gamepadService:GetPropertyChangedSignal("GamepadCursorEnabled"):Connect(function()
+	task.defer(keepCursor)
+end)
+
+keepCursor()
 
 -- closing plays MapClose itself (gamepad B closes too)
 bindButton(info.Buttons.Back, closeMapView, false)
