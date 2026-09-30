@@ -11,7 +11,7 @@ The standalone lobby / server browser for Apocalypse Rising 2. Players land here
 
 ## Toolchain
 - Rojo is pinned in [aftman.toml](aftman.toml) at the same version as the game (**7.7.0**). Bump both together.
-- `rojo serve` into the lobby place. `rojo build -o x.rbxl` is only a compile check.
+- `rojo serve` into the lobby place. `servePlaceIds` in the project locks syncing to the test hub (9350655892) and the prod lobby (863266079), so the plugin refuses any other place, including an unpublished one. `rojo build -o x.rbxl` is only a compile check.
 - Lint with selene (`std = "roblox"`). No config is committed yet; the `Keep Up` repo's `selene.toml` + `roblox.yml` work.
 
 ## Layout

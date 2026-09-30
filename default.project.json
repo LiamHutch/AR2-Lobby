@@ -1,6 +1,8 @@
 {
 	"name": "AR2 Lobby",
 
+	"servePlaceIds": [9350655892, 863266079],
+
 	"tree": {
 		"$className": "DataModel",
 
