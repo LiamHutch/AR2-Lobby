@@ -85,9 +85,10 @@ local function resolve(hostId, placeId)
 	return entry
 end
 
-local function forward(client, hostId, placeId)
+local function forward(client, hostId, placeId, title)
 	while client.Parent do
-		remotes.Status:FireClient(client, "joining")
+		-- the title names the map on the teleport's loading screen
+		remotes.Status:FireClient(client, "joining", title)
 
 		local options = Instance.new("TeleportOptions")
 		options.ReservedServerAccessCode = record.accessCode
@@ -103,6 +104,8 @@ local function forward(client, hostId, placeId)
 			local worked, why = pcall(teleportService.TeleportAsync, teleportService, placeId, { client }, options)
 
 			if worked then
+				remotes.Status:FireClient(client, "teleporting", title)
+
 				-- TeleportInitFailed restarts this if the teleport doesn't land
 				return
 			end
@@ -180,18 +183,23 @@ function library:Start(directory)
 		return false
 	end
 
+	local title = map.Title
+
 	playersService.PlayerAdded:Connect(function(client)
-		forward(client, hostId, placeId)
+		forward(client, hostId, placeId, title)
 	end)
 
 	for _, client in playersService:GetPlayers() do
-		task.spawn(forward, client, hostId, placeId)
+		task.spawn(forward, client, hostId, placeId, title)
 	end
 
 	teleportService.TeleportInitFailed:Connect(function(client)
+		-- back to the forwarding status until the retry
+		remotes.Status:FireClient(client, "failed")
+
 		task.delay(RETRY_WAIT, function()
 			if client.Parent then
-				forward(client, hostId, placeId)
+				forward(client, hostId, placeId, title)
 			end
 		end)
 	end)

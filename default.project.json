@@ -37,7 +37,7 @@
 			"$ignoreUnknownInstances": true,
 
 			"Browser": {
-				"$path": "src/Client/Browser.client.lua"
+				"$path": "src/Client/Browser"
 			}
 		},
 

@@ -27,10 +27,11 @@ local grants = nil
 
 ----
 
--- "joining" | "full" | "closed" | "failed" | "denied" | "password" | "slow"
--- | "unavailable" | "locked" | "banned"
-local function sendStatus(client, code)
-	remotes.Status:FireClient(client, code)
+-- "joining" | "teleporting" | "full" | "closed" | "failed" | "denied"
+-- | "password" | "slow" | "unavailable" | "locked" | "banned"
+-- title (the map's) goes with "teleporting" for the loading screen
+local function sendStatus(client, code, title)
+	remotes.Status:FireClient(client, code, title)
 end
 
 local function clearPending(client, token)
@@ -205,6 +206,8 @@ local function onPlay(directory, client, mapKey, jobId, password)
 	if not tryTeleport(client, placeId, options) then
 		return refuse("failed")
 	end
+
+	sendStatus(client, "teleporting", map.Title)
 
 	-- TeleportInitFailed covers most failures; this covers the rest
 	task.delay(PENDING_TIMEOUT, function()

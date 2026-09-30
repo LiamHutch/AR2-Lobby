@@ -21,26 +21,30 @@ src/Shared/  → ReplicatedStorage.Shared                   Maps.lua (map list +
 src/Server/  → ServerScriptService.Lobby                  Main.server.lua, Catalog.lua (variant, maps, access, passwords), Directory.lua (reads the
                                                           server list), Teleports.lua, Reserved.lua (single-server locks), PlaceConfig.lua (reads map configs from the place),
                                                           Vip.lua (VIP servers, built but hidden), Mock.lua (fake list for unpublished Studio)
-src/Client/  → ReplicatedFirst.Browser                    Browser.client.lua (moves the gui into PlayerGui, binds it)
+src/Client/Browser/ → ReplicatedFirst.Browser             init.client.lua (moves the gui into PlayerGui, binds it), Slideshow.lua (map art), Loading.lua (teleport screen)
 tools/build-ui.lua                                        command-bar script that builds ReplicatedFirst.Lobby
 tools/maps-to-folders.lua                                 command-bar script that turns Shared/Maps.lua into place config folders
 ```
 Remotes (`ReplicatedStorage.Remotes.Directory/Play/Status/Refresh`) and `Players.CharacterAutoLoads = false` are declared in [default.project.json](default.project.json).
 
+The lobby is **UI only**: the Workspace is empty on purpose (just Camera and Terrain), and no one ever gets a character. `CharacterAutoLoads` is off, and [Main.server.lua](src/Server/Main.server.lua) removes any character that appears anyway, so servers only do lobby work.
+
 ## UI lives in the place
 The UI is **built in Studio**, not in code. `ReplicatedFirst.Lobby` is not Rojo-managed. It lives in ReplicatedFirst, not StarterGui, because `CharacterAutoLoads = false` means StarterGui is never copied into PlayerGui; the client script moves it over (the game's usual pattern). [tools/build-ui.lua](tools/build-ui.lua) builds the first version with the game's styling recreated from values (see Style below). After that, Studio is the source of truth and designers can edit it freely **as long as the names in the UI contract below survive**. Re-running the build script wipes hand edits, **except `Lobby.Background`**, which it keeps (it's the game's main menu backdrop, art-directed in Studio).
 
-UI contract (what [Browser.client.lua](src/Client/Browser.client.lua) looks up by name). A "text box" is a Frame holding `Text` and its drop-shadow copy `Shadow`; the client writes both. Game-style buttons are Frames with `Stroke`, `Backdrop`, `Label` (text box) or `Icon`, `HighlightBox` and a clear `Button` on top.
+UI contract (what [init.client.lua](src/Client/Browser/init.client.lua) looks up by name). A "text box" is a Frame holding `Text` and its drop-shadow copy `Shadow`; the client writes both. Game-style buttons are Frames with `Stroke`, `Backdrop`, `Label` (text box) or `Icon`, `HighlightBox` and a clear `Button` on top.
 - Two screens on `Lobby.Stage` (laid out at 1440x810; the client sets `Stage.Scale` to fit): `Picker.Maps` (card container, layout free) and `MapView`
-- `MapView.Info`: text boxes `Title`, `Counts.Online`, `Counts.Servers`, `Blurb`, `Notice`; bins `Stats`, `Platforms`; `Preview.Clip.ImageA/ImageB`; buttons `Buttons.Back`, `Buttons.Play`, `Buttons.Refresh`; `Buttons.Password.Input` (TextBox, shown for password maps)
+- `MapView.Info`: text boxes `Title`, `Counts.Online`, `Counts.Servers`, `Blurb`, `Notice`; bins `Stats`, `Platforms`; `Preview.Clip` (the slideshow adds its viewports), `Preview.Clip.Dots` (the image picker, filled from `Templates.PreviewDot`, each with a `Bar`) and `Preview.Clip.Shade`; buttons `Buttons.Back`, `Buttons.Play`, `Buttons.Refresh`; `Buttons.Password.Input` (TextBox, shown for password maps)
 - `MapView.Browser`: `Sorts.Players/Newest/Region` (chips with `Label`, `Stroke`, `HighlightBox`, `Button`), `List`, text box `Empty`, `Footer` with text boxes `ServerName`, `Meta` and button `Join`
 - `Lobby.Background.Bleed` (the open map's `Backdrop` art), `Stage.Status` (text box)
 - `Lobby.Templates.*` stay `Visible = false` (they'd render otherwise); the client shows its clones
-- Map art: `Images` (landscape) feeds the map view preview; `CardImages` (portrait) feeds the picker card, falling back to `Images`
-- `Templates.MapCard`: `Clip.Art`, text boxes `Title`, `Online`, bin `Platforms`, `ComingSoon`, `HighlightBox`, `Button`
+- Map art is shown by [Slideshow.lua](src/Client/Browser/Slideshow.lua): each image is a Decal on a flat part in a ViewportFrame with a moving camera, because GUI images only move in whole pixels and slow pans look choppy. Every image is **1024x576** with its subject in the undarkened centre (about 83% x 78%) and darkened margins to move into; the frame shows the focal area and moves (drift, push-in, skew swing, rise) stay inside the image. Picker cards start at staggered times.
+- Map art: `Images` (landscape) feeds the map view preview; the picker card cycles `CardImages` (portrait) then `Images` (cropped to fit), crossfading with the same drift as the preview
+- `Templates.MapCard`: `Clip` (the slideshow adds its viewports under `Clip.Fade`), text boxes `Title`, `Online`, bin `Platforms`, `ComingSoon`, `HighlightBox`, `Button`
 - `Templates.ServerRow` (a GuiButton): text boxes `Server`, `Id`, `Region`, `Uptime`, `Players`; `Stroke`, `HighlightBox`. Don't name a child `Name`: the property hides it
 - `Templates.StatItem` (text boxes `Label`, `Value`), `Templates.PlatformChip` (`Icon`, `Label`, `Stroke`), `Templates.Selection` (gamepad selection ring)
 - Sounds (in the place, not Rojo): `ReplicatedStorage.Sounds.AmbientLoop` fades in to its own Volume when a player joins, played locally; `Sounds.Interface.Click` (button presses), `MapOpen` / `MapClose` (entering and leaving a map). Missing sounds are silent
+- Teleport screen (in the place, not Rojo, optional): `ReplicatedFirst.LoadingGui`, a copy of the game's `GuiMain.LoadingGui` wrapped in a ScreenGui. The client needs `LoadingGui.Logo.ImageLabel`, `Logo.Label.Label` / `LabelBackdrop` and `Loading Shade`. It's registered with `SetTeleportGui` before each Play (and on a VIP forward's `joining`), and fades in over the lobby when the server sends `teleporting` (after `TeleportAsync` returns). The game adopts it on arrival, so keep it matching the game's own copy or the hand-off jumps
 
 Platform support is advisory: [Platform.lua](src/Shared/Platform.lua) detects PC / Xbox / PlayStation / Mobile, and each map's `Platforms` marks some `warn` (notice, still joinable) or `blocked` (Play/Join disabled). Nothing server-side enforces it; the game places should kick unsupported platforms themselves because friend-joins skip the lobby. In Studio, set a `DebugPlatform` attribute on ReplicatedStorage to preview another platform.
 

@@ -21,6 +21,8 @@ end
 local names = require(replicatedStorage.Shared.Names)
 local platform = require(replicatedStorage.Shared.Platform)
 local protocol = require(replicatedStorage.Shared.Protocol)
+local slideshow = require(script.Slideshow)
+local loading = require(script.Loading)
 
 local remotes = replicatedStorage.Remotes
 
@@ -34,6 +36,13 @@ local browser = mapView.Browser
 local footer = browser.Footer
 local statusBox = stage.Status
 
+-- optional: without it teleports use Roblox's default screen
+local loadingGui = script.Parent:FindFirstChild("LoadingGui")
+
+if loadingGui then
+	loading.Init(loadingGui, playerGui)
+end
+
 ----
 
 local STAGE = Vector2.new(1440, 810)
@@ -43,19 +52,9 @@ local MARGIN = 24
 
 local SLIDE = 6
 local CARD_CYCLE = 8
-local FADE = TweenInfo.new(1.2, Enum.EasingStyle.Sine)
-local PAN = TweenInfo.new(SLIDE + 1.5, Enum.EasingStyle.Linear)
 local QUICK = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local SPIN = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local AMBIENT_FADE = TweenInfo.new(8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-
--- how far each preview shot drifts; images are 1.12x the frame, so keep under 0.06
-local DRIFTS = {
-	Vector2.new(0.035, 0.015),
-	Vector2.new(-0.03, 0.02),
-	Vector2.new(0.02, -0.025),
-	Vector2.new(-0.035, -0.01),
-}
 
 local BONE = Color3.fromRGB(229, 226, 219)
 local GOLD = Color3.fromRGB(202, 188, 131)
@@ -100,7 +99,6 @@ local openMap = nil
 local selectedId = nil
 local sortMode = "players"
 local joining = false
-local slideToken = 0
 local lastRefresh = -math.huge
 
 ----
@@ -237,7 +235,8 @@ end
 local function setStatus(code)
 	local text = code and STATUS_TEXT[code]
 
-	joining = code == "joining"
+	-- "teleporting" is the server confirming the teleport is under way
+	joining = code == "joining" or code == "teleporting"
 	statusBox.Visible = text ~= nil
 
 	if text then
@@ -290,6 +289,7 @@ local function play(mapKey, jobId)
 	local password = map.Password and info.Buttons.Password.Input.Text or nil
 
 	setStatus("joining")
+	loading.Prepare(map.Title)
 	remotes.Play:FireServer(mapKey, jobId, password)
 end
 
@@ -492,61 +492,65 @@ end
 
 ----
 
-local function panShot(image, index)
-	local drift = DRIFTS[(index - 1) % #DRIFTS + 1]
+local preview = nil
 
-	image.Position = UDim2.fromScale(0.5 - drift.X, 0.5 - drift.Y)
-	tweenService:Create(image, PAN, { Position = UDim2.fromScale(0.5 + drift.X, 0.5 + drift.Y) }):Play()
+-- lights the picker bar for the showing image
+local function drawDots(index)
+	for _, dot in info.Preview.Clip.Dots:GetChildren() do
+		if dot:IsA("GuiButton") then
+			dot.Bar.BackgroundTransparency = dot.LayoutOrder == index and 0 or 0.6
+		end
+	end
 end
 
--- crossfades the preview through the map's images, each one drifting slowly
 local function startSlides(images)
-	slideToken += 1
-
-	local token = slideToken
 	local clip = info.Preview.Clip
-	local front, back = clip.ImageA, clip.ImageB
 
-	front.Image = images[1] or ""
-	front.ImageTransparency = 0
-	front.ZIndex = 1
-	back.ImageTransparency = 1
+	if not preview then
+		-- the slideshow draws into viewports; image labels from older builds of the UI go unused
+		for _, name in { "ImageA", "ImageB" } do
+			local old = clip:FindFirstChild(name)
 
-	if #images == 0 then
-		return
+			if old then
+				old.Visible = false
+			end
+		end
+
+		preview = slideshow.new(clip, { interval = SLIDE, zIndex = 1, onChange = drawDots })
 	end
 
-	task.spawn(function()
-		local index = 1
+	-- the picker: one bar per image, only worth showing with more than one
+	clear(clip.Dots)
+	clip.Shade.Visible = #images > 1
 
-		panShot(front, index)
+	if #images > 1 then
+		for index = 1, #images do
+			local dot = templates.PreviewDot:Clone()
+			dot.LayoutOrder = index
+			dot.Visible = true
 
-		while true do
-			task.wait(SLIDE)
+			dot.MouseEnter:Connect(function()
+				if preview.index ~= index then
+					dot.Bar.BackgroundTransparency = 0.3
+				end
+			end)
 
-			if token ~= slideToken then
-				return
-			end
+			dot.MouseLeave:Connect(function()
+				drawDots(preview.index)
+			end)
 
-			if #images < 2 then
-				panShot(front, index)
+			dot.Activated:Connect(function()
+				if preview.index ~= index then
+					playSound("Click")
+					preview:Show(index)
+				end
+			end)
 
-				continue
-			end
-
-			index = index % #images + 1
-
-			back.Image = images[index]
-			back.ImageTransparency = 1
-			back.ZIndex = 2
-			front.ZIndex = 1
-
-			panShot(back, index)
-			tweenService:Create(back, FADE, { ImageTransparency = 0 }):Play()
-
-			front, back = back, front
+			dot.Parent = clip.Dots
 		end
-	end)
+	end
+
+	preview:SetImages(images)
 end
 
 local function drawNotice(map)
@@ -628,7 +632,10 @@ local function closeMapView()
 	local card = cards[openMap.Key]
 
 	openMap = nil
-	slideToken += 1
+
+	if preview then
+		preview:Stop()
+	end
 
 	tweenService:Create(bleed, QUICK, { ImageTransparency = 1 }):Play()
 
@@ -641,30 +648,10 @@ end
 
 ----
 
-local function cycleArt(card, images)
-	local art = card.Clip.Art
-	local index = 1
-
-	art.Image = images[1] or ""
-
-	if #images < 2 then
-		return
-	end
-
-	task.spawn(function()
-		while card.Parent do
-			task.wait(CARD_CYCLE)
-
-			index = index % #images + 1
-
-			local out = tweenService:Create(art, QUICK, { ImageTransparency = 1 })
-			out:Play()
-			out.Completed:Wait()
-
-			art.Image = images[index]
-			tweenService:Create(art, QUICK, { ImageTransparency = 0 }):Play()
-		end
-	end)
+-- cards change images at spread-out times: golden-ratio steps through the
+-- cycle stay apart however many cards there are
+local function cardDelay(index)
+	return ((index - 1) * 0.618 % 1) * CARD_CYCLE
 end
 
 local function drawCard(map)
@@ -690,9 +677,30 @@ local function makeCard(map, index)
 	setText(card.Title, titleText(map))
 	drawChips(card.Platforms, map)
 
-	-- portrait art suits the card; landscape is the fallback
-	local cardArt = map.CardImages and #map.CardImages > 0 and map.CardImages or map.Images or {}
-	cycleArt(card, cardArt)
+	-- portrait shots first, then the landscape ones cropped to fit
+	local cardArt = table.clone(map.CardImages or {})
+
+	for _, image in map.Images or {} do
+		table.insert(cardArt, image)
+	end
+
+	local art = card.Clip:FindFirstChild("Art")
+
+	if art then
+		art.Visible = false
+	end
+
+	local show = slideshow.new(card.Clip, {
+		interval = CARD_CYCLE,
+		zIndex = 0, -- under the card's Fade
+		delay = cardDelay(index),
+		seed = index * 7919,
+	})
+
+	show:SetImages(cardArt)
+	card.Destroying:Connect(function()
+		show:Destroy()
+	end)
 
 	card.Button.MouseEnter:Connect(function()
 		card.HighlightBox.Visible = liveMaps[map.Key] == true
@@ -716,6 +724,18 @@ end
 -- change (a role change, a test map added)
 local function syncMaps(list)
 	local seen = {}
+	local art = {}
+
+	-- fetch every map's art now, so opening a map never waits on its images
+	for _, map in list do
+		for _, set in { map.CardImages or {}, map.Images or {} } do
+			for _, image in set do
+				table.insert(art, image)
+			end
+		end
+	end
+
+	slideshow.Preload(art)
 
 	table.clear(maps)
 	table.clear(mapsByKey)
@@ -887,11 +907,22 @@ end
 drawForwarding()
 replicatedStorage:GetAttributeChangedSignal("VipForward"):Connect(drawForwarding)
 
-remotes.Status.OnClientEvent:Connect(function(code)
+remotes.Status.OnClientEvent:Connect(function(code, title)
 	setStatus(code)
 
+	if code == "teleporting" then
+		loading.Show(title)
+	elseif code == "joining" then
+		-- VIP forwards teleport without a Play, so they name the map here
+		if title then
+			loading.Prepare(title)
+		end
+	else
+		loading.Hide()
+	end
+
 	-- while forwarding, a failure stays up until the server retries
-	if code ~= "joining" and not forwarding() then
+	if code ~= "joining" and code ~= "teleporting" and not forwarding() then
 		task.delay(3, function()
 			if not joining and statusBox.Text.Text == spaced(STATUS_TEXT[code] or "") then
 				setStatus(nil)

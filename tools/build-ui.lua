@@ -315,10 +315,11 @@ end
 
 ----
 
--- the game's main menu backdrop (ReplicatedStorage.Interface.MainMenu.Master.Background);
--- only used when the place doesn't already have one
+-- the lobby's backdrop: the game's main menu one (MainMenu.Master.Background)
+-- as art-directed in Studio. Only used when the place doesn't have one; keep
+-- it in step with the place's copy when that's edited
 local function buildBackground()
-	local function grit(name, image, anchor, scale, transparency)
+	local function grit(name, image, anchor, scale, transparency, zIndex)
 		return make("ImageLabel", {
 			Name = name,
 			AnchorPoint = anchor,
@@ -329,7 +330,7 @@ local function buildBackground()
 			Image = image,
 			ImageColor3 = BLACK,
 			ImageTransparency = transparency,
-			ZIndex = 3,
+			ZIndex = zIndex,
 		}, {
 			make("UISizeConstraint", { MaxSize = Vector2.new(1024, 1024) }),
 		})
@@ -340,14 +341,14 @@ local function buildBackground()
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(80, 80, 80),
+		BackgroundColor3 = Color3.fromRGB(61, 61, 61),
 		BorderSizePixel = 0,
 	}, {
 		make("Frame", {
 			Name = "GradientDrop",
 			Size = UDim2.fromScale(1, 1),
 			BackgroundColor3 = BLACK,
-			BackgroundTransparency = 0.7,
+			BackgroundTransparency = 0.4,
 			BorderSizePixel = 0,
 			ZIndex = 1,
 		}, {
@@ -364,7 +365,7 @@ local function buildBackground()
 			Name = "GradientFade",
 			Size = UDim2.fromScale(1, 1),
 			BackgroundColor3 = BLACK,
-			BackgroundTransparency = 0.7,
+			BackgroundTransparency = 0.35,
 			BorderSizePixel = 0,
 			ZIndex = 2,
 		}, {
@@ -423,7 +424,7 @@ local function buildBackground()
 			ImageColor3 = Color3.fromRGB(110, 110, 110),
 			ImageTransparency = 1,
 			ScaleType = Enum.ScaleType.Crop,
-			ZIndex = 3,
+			ZIndex = 2,
 		}),
 
 		make("Frame", {
@@ -432,10 +433,10 @@ local function buildBackground()
 			BackgroundTransparency = 1,
 			ZIndex = 4,
 		}, {
-			grit("BottomRight2", "rbxassetid://83808700820268", Vector2.new(1, 1), 1, 0),
-			grit("BottomLeft2", "rbxassetid://97071793107351", Vector2.new(0, 1), 1, 0),
-			grit("BottomRight1", "rbxassetid://111332206534538", Vector2.new(1, 1), 0.7, 0.79),
-			grit("BottomLeft1", "rbxassetid://123577345537370", Vector2.new(0, 1), 0.7, 0.79),
+			grit("BottomRight2", "rbxassetid://83808700820268", Vector2.new(1, 1), 1, 0, 3),
+			grit("BottomLeft2", "rbxassetid://97071793107351", Vector2.new(0, 1), 1, 0, 3),
+			grit("BottomRight1", "rbxassetid://111332206534538", Vector2.new(1, 1), 0.7, 0.79, 2),
+			grit("BottomLeft1", "rbxassetid://123577345537370", Vector2.new(0, 1), 0.7, 0.79, 2),
 		}),
 	})
 end
@@ -485,13 +486,13 @@ local function buildInfo()
 
 	return make("Frame", {
 		Name = "Info",
-		Position = UDim2.fromOffset(64, 48),
-		Size = UDim2.fromOffset(520, 730),
+		Position = UDim2.fromOffset(64, 40),
+		Size = UDim2.fromOffset(600, 740),
 		BackgroundTransparency = 1,
 	}, {
 		list(Enum.FillDirection.Vertical, 10),
 
-		text("Title", { LayoutOrder = 1, Size = UDim2.fromOffset(520, 70) }, {
+		text("Title", { LayoutOrder = 1, Size = UDim2.fromOffset(600, 70) }, {
 			FontFace = font(Enum.FontWeight.Heavy),
 			TextScaled = true,
 			TextColor3 = BONE,
@@ -503,7 +504,7 @@ local function buildInfo()
 		make("Frame", {
 			Name = "Counts",
 			LayoutOrder = 2,
-			Size = UDim2.fromOffset(520, 38),
+			Size = UDim2.fromOffset(600, 38),
 			BackgroundTransparency = 1,
 		}, {
 			list(Enum.FillDirection.Horizontal, 14, { VerticalAlignment = Enum.VerticalAlignment.Bottom }),
@@ -526,21 +527,21 @@ local function buildInfo()
 			}, 2),
 		}),
 
-		text("Blurb", { LayoutOrder = 3, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.fromOffset(500, 0) }, {
+		text("Blurb", { LayoutOrder = 3, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.fromOffset(580, 0) }, {
 			FontFace = Font.new(SOURCE_SANS, Enum.FontWeight.Regular, Enum.FontStyle.Italic),
 			TextSize = 21,
 			TextColor3 = BONE,
 			TextTransparency = 0.3,
 			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.fromOffset(500, 0),
+			Size = UDim2.fromOffset(580, 0),
 			Text = "",
 		}, 2),
 
 		make("Frame", {
 			Name = "Stats",
 			LayoutOrder = 4,
-			Size = UDim2.fromOffset(520, 52),
+			Size = UDim2.fromOffset(600, 52),
 			BackgroundTransparency = 1,
 		}, {
 			list(Enum.FillDirection.Horizontal, 30),
@@ -549,13 +550,13 @@ local function buildInfo()
 		make("Frame", {
 			Name = "Platforms",
 			LayoutOrder = 5,
-			Size = UDim2.fromOffset(520, 26),
+			Size = UDim2.fromOffset(600, 26),
 			BackgroundTransparency = 1,
 		}, {
 			list(Enum.FillDirection.Horizontal, 8),
 		}),
 
-		text("Notice", { LayoutOrder = 6, Size = UDim2.fromOffset(520, 22), Visible = false }, {
+		text("Notice", { LayoutOrder = 6, Size = UDim2.fromOffset(600, 22), Visible = false }, {
 			FontFace = font(Enum.FontWeight.SemiBold),
 			TextSize = 17,
 			TextColor3 = Color3.fromRGB(227, 166, 74),
@@ -568,12 +569,12 @@ local function buildInfo()
 		make("Frame", {
 			Name = "Preview",
 			LayoutOrder = 8,
-			Size = UDim2.fromOffset(480, 270),
+			Size = UDim2.fromOffset(600, 338),
 			BackgroundTransparency = 1,
 		}, {
 			shadow(0.5),
 
-			-- ImageA/ImageB crossfade; the client pans them inside the clip
+			-- the client's slideshow adds its viewports here (ZIndex 1-2)
 			make("Frame", {
 				Name = "Clip",
 				Size = UDim2.fromScale(1, 1),
@@ -589,42 +590,51 @@ local function buildInfo()
 					ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 				}),
 
-				make("ImageLabel", {
-					Name = "ImageA",
-					AnchorPoint = Vector2.new(0.5, 0.5),
-					Position = UDim2.fromScale(0.5, 0.5),
-					Size = UDim2.fromScale(1.12, 1.12),
-					BackgroundTransparency = 1,
-					ScaleType = Enum.ScaleType.Crop,
-					Image = "",
-					ZIndex = 1,
+
+				-- keeps the picker readable on bright shots
+				make("Frame", {
+					Name = "Shade",
+					AnchorPoint = Vector2.new(0, 1),
+					Position = UDim2.fromScale(0, 1),
+					Size = UDim2.new(1, 0, 0, 56),
+					BackgroundColor3 = BLACK,
+					BorderSizePixel = 0,
+					ZIndex = 3,
+				}, {
+					make("UIGradient", {
+						Rotation = 90,
+						Transparency = numbers({ { 0, 1 }, { 1, 0.45 } }),
+					}),
 				}),
 
-				make("ImageLabel", {
-					Name = "ImageB",
-					AnchorPoint = Vector2.new(0.5, 0.5),
-					Position = UDim2.fromScale(0.5, 0.5),
-					Size = UDim2.fromScale(1.12, 1.12),
+				-- one PreviewDot per image, made by the client
+				make("Frame", {
+					Name = "Dots",
+					AnchorPoint = Vector2.new(0.5, 1),
+					Position = UDim2.new(0.5, 0, 1, -6),
+					Size = UDim2.new(1, -24, 0, 26),
 					BackgroundTransparency = 1,
-					ScaleType = Enum.ScaleType.Crop,
-					Image = "",
-					ImageTransparency = 1,
-					ZIndex = 2,
+					ZIndex = 4,
+				}, {
+					list(Enum.FillDirection.Horizontal, 2, {
+						HorizontalAlignment = Enum.HorizontalAlignment.Center,
+						VerticalAlignment = Enum.VerticalAlignment.Center,
+					}),
 				}),
 			}),
 		}),
 
-		spacer(9, 12),
+		spacer(9, 6),
 
 		make("Frame", {
 			Name = "Buttons",
 			LayoutOrder = 10,
-			Size = UDim2.fromOffset(520, 60),
+			Size = UDim2.fromOffset(600, 60),
 			BackgroundTransparency = 1,
 		}, {
 			list(Enum.FillDirection.Horizontal, 12),
 			ordered(iconButton("Back", BACK_ICON), 1),
-			ordered(textButton("Play", UDim2.fromOffset(240, 60), "PLAY"), 2),
+			ordered(textButton("Play", UDim2.fromOffset(283, 60), "PLAY"), 2),
 			ordered(iconButton("Refresh", REFRESH_ICON), 3),
 			ordered(passwordField(), 4),
 		}),
@@ -685,8 +695,8 @@ local function buildBrowser()
 
 	return make("Frame", {
 		Name = "Browser",
-		Position = UDim2.fromOffset(600, 52),
-		Size = UDim2.fromOffset(STAGE.X - 48 - 600, 710),
+		Position = UDim2.fromOffset(704, 52),
+		Size = UDim2.fromOffset(STAGE.X - 48 - 704, 710),
 		BackgroundTransparency = 1,
 	}, {
 		text("Heading", { Size = UDim2.fromOffset(320, 50) }, {
@@ -799,8 +809,8 @@ end
 local function buildPanel()
 	return make("Frame", {
 		Name = "Panel",
-		Position = UDim2.fromOffset(540, 28),
-		Size = UDim2.fromOffset(STAGE.X - 24 - 540, STAGE.Y - 56),
+		Position = UDim2.fromOffset(644, 28),
+		Size = UDim2.fromOffset(STAGE.X - 24 - 644, STAGE.Y - 56),
 		BackgroundColor3 = PANEL,
 		BackgroundTransparency = 0.45,
 		BorderSizePixel = 0,
@@ -885,6 +895,30 @@ local function chipTemplate()
 	})
 end
 
+-- a thin bar with a finger-sized hit area around it
+local function dotTemplate()
+	return make("ImageButton", {
+		Name = "PreviewDot",
+		Size = UDim2.fromOffset(40, 26),
+		BackgroundTransparency = 1,
+		AutoButtonColor = false,
+		Image = "",
+		Visible = false,
+		ZIndex = 5,
+	}, {
+		make("Frame", {
+			Name = "Bar",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(30, 4),
+			BackgroundColor3 = BONE,
+			BackgroundTransparency = 0.6,
+			BorderSizePixel = 0,
+			ZIndex = 5,
+		}),
+	})
+end
+
 local function statTemplate()
 	return make("Frame", {
 		Name = "StatItem",
@@ -938,15 +972,7 @@ local function cardTemplate()
 			ClipsDescendants = true,
 			ZIndex = 1,
 		}, {
-			make("ImageLabel", {
-				Name = "Art",
-				Size = UDim2.fromScale(1, 1),
-				BackgroundTransparency = 1,
-				ScaleType = Enum.ScaleType.Crop,
-				Image = "",
-				ZIndex = 1,
-			}),
-
+			-- the client's slideshow adds its viewports here (ZIndex 0-1), under the Fade
 			make("Frame", {
 				Name = "Fade",
 				Size = UDim2.fromScale(1, 1),
@@ -1146,6 +1172,7 @@ make("ScreenGui", {
 		rowTemplate(),
 		statTemplate(),
 		chipTemplate(),
+		dotTemplate(),
 
 		-- gamepad selection ring, same art as the hover highlight
 		(function()
