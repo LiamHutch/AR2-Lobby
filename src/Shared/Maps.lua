@@ -19,6 +19,9 @@
 --              map view's preview. Image asset ids, not Decal ids (a decal's
 --              image id is its Texture; pasting a decal id into an ImageLabel in
 --              Studio converts it)
+--   CardImages optional art for the picker card only, 756x1024 (the card's
+--              shape), full-bleed with no darkened margins; the map view
+--              still uses Images. Missing uses Images on the card too
 --   Backdrop   optional tiny (~128px) copy of the art; Roblox's upscaling
 --              blurs it into the full-screen background
 --   PlaceIds   every place that runs this map, prod and test. The lobby uses
@@ -30,7 +33,8 @@
 return {
 	{
 		Key = "Beta",
-		Name = "Beta Map",
+		-- the Beta Map; the key stays Beta, the game and teleport data use it
+		Name = "Halsey Islands",
 		Accent = "#D9A21B",
 		Blurb = "Apocalypse Rising 2’s flagship map, featuring a large playable area with diverse environments and a high-fidelity visual style. Recommended for most players.",
 		Stats = {
@@ -55,6 +59,13 @@ return {
 			"rbxassetid://140317366312469", -- beta6 swamp
 			"rbxassetid://119672357664079", -- beta7 magnolia
 		},
+		CardImages = {
+			"rbxassetid://72133014912064", -- 1 ashland
+			"rbxassetid://119317650646372", -- 2 RT
+			"rbxassetid://128816300628380", -- 3 fairview
+			"rbxassetid://93788575839107", -- 4 magnolia
+			"rbxassetid://107603186796265", -- 5 grain
+		},
 		PlaceIds = {
 			90014710188160, -- production main (863266079 is the lobby now)
 			12123099753, -- Test - Prod main
@@ -69,8 +80,8 @@ return {
 
 	{
 		Key = "Kin",
-		-- Kin is a city on the Reimagined map; the picker calls it Kin Map
-		Name = "Kin Map",
+		-- the Kin Map (Reimagined, on the retro build)
+		Name = "Kin Flats",
 		Accent = "#5A9FD8",
 		Blurb = "The original Apocalypse Rising map, featuring a smaller playable area, streamlined terrain, and a classic visual style.",
 		Stats = {

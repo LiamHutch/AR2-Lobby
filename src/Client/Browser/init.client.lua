@@ -79,6 +79,9 @@ local EDGE_FADE = 36
 
 local SLIDE = 6
 local CARD_CYCLE = 8
+
+-- a map's CardImages are cut for the card: 756x1024, full-bleed
+local CARD_ART = { aspect = 756 / 1024, focus = { 1, 1 } }
 local QUICK = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local AMBIENT_FADE = TweenInfo.new(8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 
@@ -912,15 +915,19 @@ local function makeCard(map, index)
 		art.Visible = false
 	end
 
+	-- the card's own art if it has some, else the preview's cropped to the card
+	local cardArt = map.CardImages and #map.CardImages > 0
+
 	local show = slideshow.new(card.Clip, {
 		interval = CARD_CYCLE,
 		zIndex = 0, -- under the card's Fade
 		delay = cardDelay(index),
 		seed = index * 7919,
+		aspect = cardArt and CARD_ART.aspect or nil,
+		focus = cardArt and CARD_ART.focus or nil,
 	})
 
-	-- the same art as the preview, cropped to the card
-	show:SetImages(map.Images or {})
+	show:SetImages(cardArt and map.CardImages or map.Images or {})
 	card.Destroying:Connect(function()
 		show:Destroy()
 	end)
@@ -954,6 +961,10 @@ local function syncMaps(list)
 	-- fetch every map's art now, so opening a map never waits on its images
 	for _, map in list do
 		for _, image in map.Images or {} do
+			table.insert(art, image)
+		end
+
+		for _, image in map.CardImages or {} do
 			table.insert(art, image)
 		end
 	end

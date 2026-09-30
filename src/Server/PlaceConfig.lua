@@ -8,7 +8,7 @@
 --
 -- Active holds one ModuleScript per map, named with its title. Each returns a
 -- table in the same shape as an entry in Shared/Maps.lua (Key, Accent, Blurb,
--- Stats, Tags, Platforms, Images, Backdrop, PlaceIds, Vip), plus:
+-- Stats, Tags, Platforms, Images, CardImages, Backdrop, PlaceIds, Vip), plus:
 --
 --   Order         display order, then title
 --   Access        tiers that can see and join it: "Tester", "Staff",
@@ -179,6 +179,7 @@ function library.Normalize(raw, title)
 		Tags = tags(raw.Tags),
 		Platforms = platforms(raw.Platforms),
 		Images = clean(raw.Images, asset),
+		CardImages = clean(raw.CardImages, asset),
 		Backdrop = asset(raw.Backdrop),
 		PlaceIds = placeIds,
 		Vip = vip(raw.Vip),

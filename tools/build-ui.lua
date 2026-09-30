@@ -1136,14 +1136,21 @@ local function cardTemplate()
 			}),
 		}),
 
-		text("Title", { Position = UDim2.new(0, 28, 1, -196), Size = UDim2.new(1, -56, 0, 62), ZIndex = 2 }, {
-			FontFace = font(Enum.FontWeight.Heavy),
-			TextScaled = true,
-			TextColor3 = BONE,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			RichText = true,
-			Text = "",
-		}, 4),
+		(function()
+			local object = text("Title", { Position = UDim2.new(0, 28, 1, -196), Size = UDim2.new(1, -56, 0, 62), ZIndex = 2 }, {
+				FontFace = font(Enum.FontWeight.Heavy),
+				TextScaled = true,
+				TextColor3 = BONE,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				RichText = true,
+				Text = "",
+			}, 4)
+
+			-- a heavier shadow than elsewhere: the card art runs bright behind it
+			object.Shadow.TextTransparency = 0.5
+
+			return object
+		end)(),
 
 		text("Online", { Position = UDim2.new(0, 28, 1, -130), Size = UDim2.new(1, -56, 0, 34), ZIndex = 2 }, {
 			FontFace = font(Enum.FontWeight.SemiBold, Enum.FontStyle.Italic),

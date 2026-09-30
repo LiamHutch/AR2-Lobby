@@ -3,9 +3,11 @@
 -- ViewportFrame and the camera moves over it, which renders sub-pixel. That
 -- also allows real camera moves: drifts, push-ins and slight skews.
 --
--- The art is shot for this: every image is 1024x576 with its subject in the
--- undarkened centre, and the darkened edges are room to move into. The
--- frame shows the focal area and the moves stay inside the image.
+-- The map art is shot for this: every image is 1024x576 with its subject in
+-- the undarkened centre, and the darkened edges are room to move into. The
+-- frame shows the focal area and the moves stay inside the image. A show can
+-- take other art (the picker cards' own CardImages) with its own shape and
+-- focal area; art with no margins to spare only pushes in and drifts a little.
 
 local tweenService = game:GetService("TweenService")
 local contentProvider = game:GetService("ContentProvider")
@@ -20,6 +22,10 @@ local ASPECT = 16 / 9 -- every map image is 1024x576
 -- the undarkened focal area, as a share of the image's width and height
 local FOCUS_WIDTH = 0.83
 local FOCUS_HEIGHT = 0.78
+
+-- below this much room to shift sideways, a show skips its sideways moves
+-- (drift across, skew swing), which would show past the image's edges
+local MIN_SHIFT = 0.01
 
 -- how much of the spare margin a move may use, and a cap so portrait crops
 -- (lots of spare width) still move gently
@@ -71,7 +77,7 @@ end
 
 ----
 
-local function makeLayer(container, zIndex)
+local function makeLayer(container, zIndex, aspect)
 	local viewport = Instance.new("ViewportFrame")
 	viewport.Name = "Slide"
 	viewport.Size = UDim2.fromScale(1, 1)
@@ -90,7 +96,7 @@ local function makeLayer(container, zIndex)
 	-- the image plane: centred on the origin, facing +Z (its Back face)
 	local part = Instance.new("Part")
 	part.Anchored = true
-	part.Size = Vector3.new(ASPECT, 1, 0.02)
+	part.Size = Vector3.new(aspect, 1, 0.02)
 	part.CFrame = CFrame.new()
 	part.Color = Color3.new(1, 1, 1)
 	part.Material = Enum.Material.SmoothPlastic
@@ -113,10 +119,17 @@ end
 --   delay     seconds before the first change, to stagger several shows
 --   seed      varies the order of moves between shows
 --   onChange  called with the index whenever the showing image changes
+--   aspect    the images' width / height; default 16:9, the map art
+--   focus     { width, height } share of each image to keep in frame;
+--             default the map art's undarkened centre, { 1, 1 } for art with
+--             no margins
 function library.new(container, options)
 	local self = setmetatable({}, library)
 
 	self.container = container
+	self.aspect = options.aspect or ASPECT
+	self.focusWidth = options.focus and options.focus[1] or FOCUS_WIDTH
+	self.focusHeight = options.focus and options.focus[2] or FOCUS_HEIGHT
 	self.interval = options.interval or 6
 	self.delay = options.delay or 0
 	self.onChange = options.onChange
@@ -126,8 +139,8 @@ function library.new(container, options)
 	self.token = 0
 
 	local base = options.zIndex or 1
-	self.front = makeLayer(container, base + 1)
-	self.back = makeLayer(container, base)
+	self.front = makeLayer(container, base + 1, self.aspect)
+	self.back = makeLayer(container, base, self.aspect)
 	self.base = base
 
 	return self
@@ -137,14 +150,15 @@ end
 -- how far a move may shift the view each way
 function library:frame()
 	local size = self.container.AbsoluteSize
-	local ratio = size.Y > 0 and size.X / size.Y or ASPECT
+	local aspect = self.aspect
+	local ratio = size.Y > 0 and size.X / size.Y or aspect
 
 	-- show the focal area; a frame wider than it shows its full width instead
-	local visibleHeight = math.min(FOCUS_HEIGHT, ASPECT * FOCUS_WIDTH / ratio)
+	local visibleHeight = math.min(self.focusHeight, aspect * self.focusWidth / ratio)
 	local visibleWidth = visibleHeight * ratio
 
 	local distance = (visibleHeight / 2) / math.tan(math.rad(FOV / 2))
-	local spareX = (ASPECT - visibleWidth) / 2
+	local spareX = (aspect - visibleWidth) / 2
 	local spareY = (1 - visibleHeight) / 2
 
 	return distance, math.min(spareX * MARGIN_USE, MAX_SHIFT), math.min(spareY * MARGIN_USE, MAX_SHIFT)
@@ -169,7 +183,8 @@ function library:move()
 		return CFrame.lookAt(position, Vector3.new(x, y, 0))
 	end
 
-	local kind = random:NextInteger(1, 4)
+	-- 1 and 3 move sideways; art with no room that way only pushes or rises
+	local kind = shiftX < MIN_SHIFT and (random:NextNumber() < 0.5 and 2 or 4) or random:NextInteger(1, 4)
 
 	if kind == 1 then
 		-- drift across, easing in slightly

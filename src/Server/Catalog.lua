@@ -160,6 +160,7 @@ function library:PublicInfo(map, live)
 		Tags = map.Tags,
 		Platforms = map.Platforms,
 		Images = map.Images,
+		CardImages = map.CardImages,
 		Backdrop = map.Backdrop,
 		Password = self:NeedsPassword(map),
 		SingleServer = map.SingleServer == true,
