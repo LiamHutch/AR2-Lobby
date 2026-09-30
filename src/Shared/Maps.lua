@@ -27,7 +27,7 @@ return {
 		Key = "Beta",
 		Name = "Beta Map",
 		Accent = "#D9A21B",
-		Blurb = "",
+		Blurb = "Apocalypse Rising 2’s flagship map, featuring a large playable area with diverse environments and a high-fidelity visual style. Recommended for most players.",
 		Stats = {
 			{ "RELEASE DATE", "2025" },
 			{ "MAX PLAYERS", "32" },
@@ -49,7 +49,7 @@ return {
 			"rbxassetid://140317366312469", -- beta6 swamp
 		},
 		PlaceIds = {
-			863266079, -- Prod - Main
+			90014710188160, -- production main (863266079 is the lobby now)
 			12123099753, -- Test - Prod main
 		},
 		Vip = {
@@ -81,6 +81,8 @@ return {
 			"rbxassetid://83414551442195", -- reimagined1 kin
 			"rbxassetid://137147392099225", -- reimagined2 factory
 		},
-		PlaceIds = {},
+		PlaceIds = {
+			81089296768446, -- production retro
+		},
 	},
 }

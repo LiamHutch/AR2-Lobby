@@ -76,6 +76,8 @@ It skips Studio, reserved/VIP servers, Ban Land, and every non-prod place, becau
 
 **Joining.** The lobby calls `TeleportAsync` server-side. With no instance id, Roblox matchmakes into a public server (the one-click card). With `ServerInstanceId`, it joins a specific server from the list. Teleport data is `{ source = "AR2Lobby", v, map }`. The game doesn't read it yet.
 
+**Places.** Prod lobby **863266079** (formerly the game's Prod - Main). Test lobby **9350655892** (the old dev hub's place). Beta Map runs on **90014710188160** (production main; test copy 12123099753), Kin Map on **81089296768446** (production retro). The prod map configs are place folders in the lobby place; `Maps.lua` mirrors them as the fallback.
+
 **Universe.** MemoryStore and teleports are per-universe. The lobby must be published **inside the same universe** as the game places it lists. [Directory.lua](src/Server/Directory.lua) resolves each map's place with `AssetService:GetGamePlacesAsync()`. A map with no place in the current universe shows as "coming soon". In unpublished Studio (`GameId == 0`) it falls back to each map's first id and serves a fake server list from [Mock.lua](src/Server/Mock.lua), so the UI can be built and demoed. Teleports there fail straight away with "couldn't join". Once the place is published, Studio reads the real directory.
 
 ## Map config lives in the place
