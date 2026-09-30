@@ -69,6 +69,8 @@ local STATUS_TEXT = {
 	password = "wrong password",
 	slow = "too many tries",
 	unavailable = "unavailable",
+	locked = "server locked",
+	banned = "banned from server",
 }
 
 -- sort chip name -> mode
@@ -276,6 +278,11 @@ local function sortServers(servers)
 			return bFull
 		end
 
+		-- public servers first, then VIP
+		if a.Kind ~= b.Kind then
+			return a.Kind == "public"
+		end
+
 		if sortMode == "newest" and a.StartedAt ~= b.StartedAt then
 			return a.StartedAt > b.StartedAt
 		end
@@ -373,14 +380,22 @@ function drawServers()
 		row.Stroke.Enabled = chosen
 		row.HighlightBox.Visible = chosen
 
+		local isVip = server.Kind ~= "public"
+
 		setText(row.Server, names:ForJob(server.Id))
-		setText(row.Id, names:ShortId(server.Id))
+		setText(row.Id, isVip and ("VIP  ·  " .. (server.Host or "…")) or names:ShortId(server.Id))
 		setText(row.Region, server.Region or "—")
 		setText(row.Uptime, formatUptime(math.max(0, now - server.StartedAt)))
-		setText(row.Players, full and "FULL" or string.format("%d / %d", server.Players, server.Max))
+		setText(row.Players, full and "FULL" or server.Locked and "LOCKED" or string.format("%d / %d", server.Players, server.Max))
 
 		for _, cell in { row.Server, row.Region, row.Uptime, row.Players } do
 			cell.Text.TextColor3 = ink
+		end
+
+		-- the host and their co-hosts can still get into a locked server, so it
+		-- stays selectable; the lobby server decides
+		if server.Locked and not full then
+			row.Players.Text.TextColor3 = AMBER
 		end
 	end
 
@@ -395,12 +410,18 @@ function drawServers()
 
 	if picked then
 		setText(footer.ServerName, names:ForJob(picked.Id):upper())
-		setText(footer.Meta, table.concat({
-			names:ShortId(picked.Id),
+		local meta = {
+			picked.Kind ~= "public" and ("VIP  ·  " .. (picked.Host or "…")) or names:ShortId(picked.Id),
 			picked.Region or "—",
 			"up " .. formatUptime(math.max(0, now - picked.StartedAt)),
 			string.format("%d / %d", picked.Players, picked.Max),
-		}, "  ·  "))
+		}
+
+		for _, tag in picked.Tags or {} do
+			table.insert(meta, tag)
+		end
+
+		setText(footer.Meta, table.concat(meta, "  ·  "))
 	else
 		setText(footer.ServerName, "")
 		setText(footer.Meta, "")

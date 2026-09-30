@@ -14,6 +14,8 @@
 --   PlaceIds   every place that runs this map, prod and test. The lobby uses
 --              whichever one is in its own universe. A map with no place in
 --              this universe shows as coming soon.
+--   Vip        { [kind] = placeIds } for VIP servers of this map (kinds are in
+--              Protocol.lua); listed only once Protocol.VIP_LISTING is on
 
 return {
 	{
@@ -44,6 +46,12 @@ return {
 		PlaceIds = {
 			863266079, -- Prod - Main
 			12123099753, -- Test - Prod main
+		},
+		Vip = {
+			freeroam = {
+				105446216022659, -- Prod - VIP Freeroam
+				107047742607799, -- its dev/test copy
+			},
 		},
 	},
 

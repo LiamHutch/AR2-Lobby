@@ -17,9 +17,11 @@ local entries = {}
 
 ----
 
-local function seed(placeId, count, version)
+local HOSTS = { 1, 156, 261 } -- real accounts, so host names resolve in Studio
+
+local function seed(placeId, count, version, kind)
 	for index = 1, count or SERVERS_PER_PLACE do
-		table.insert(entries, {
+		local entry = {
 			v = version,
 			placeId = placeId,
 			jobId = httpService:GenerateGUID(false):lower(),
@@ -29,17 +31,26 @@ local function seed(placeId, count, version)
 			startedAt = os.time() - random:NextInteger(60, 8 * 3600),
 			placeVersion = 1,
 			region = REGIONS[random:NextInteger(1, #REGIONS)],
-		})
+		}
+
+		if kind then
+			entry.kind = kind
+			entry.hostId = HOSTS[(index - 1) % #HOSTS + 1]
+			entry.locked = index == 2
+			entry.settings = { FirstPersonOnly = index == 3, ZombiesEnabled = index ~= 4, LootEnabled = true }
+		end
+
+		table.insert(entries, entry)
 	end
 end
 
 ----
 
--- places: { { placeId, serverCount? } }; version matches the directory being faked
+-- places: { { placeId, serverCount?, kind? } }; version matches the directory being faked
 function library:Read(places, version)
 	if #entries == 0 then
 		for _, place in places do
-			seed(place[1], place[2], version)
+			seed(place[1], place[2], version, place[3])
 		end
 	end
 

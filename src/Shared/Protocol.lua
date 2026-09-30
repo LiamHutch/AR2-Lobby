@@ -2,7 +2,7 @@
 -- KEEP IN SYNC with the BROWSER_* fields in the game's
 -- ApocalypseRising2/src/Server/Configs/HubProtocol.lua.
 --
--- Directory entry written by each public game server (key = JobId):
+-- Directory entry written by each listed game server (key = JobId):
 --   {
 --     v = VERSION,
 --     placeId = number,
@@ -13,10 +13,26 @@
 --     placeVersion = number,  -- game.PlaceVersion, spots outdated servers
 --     region = string?,       -- coarse location, e.g. "US East"; optional,
 --                             -- older beacons don't send it
+--     kind = string?,         -- see KINDS; missing means "public"
+--
+--     -- VIP kinds only (never an access code or PrivateServerId):
+--     hostId = number,        -- the host's UserId
+--     locked = boolean?,      -- host has locked the server
+--     settings = table?,      -- the mode's config, e.g. Freeroam's Config
 --   }
 --
+-- Kinds (lobbies skip kinds they don't handle, so the game can start writing
+-- a new one before any lobby shows it):
+--   public    a normal public server; matchmake, or join by ServerInstanceId
+--   freeroam  a host's VIP Freeroam server, one persistent reserved server
+--             per host; joined through the lobby's ticket, never directly
+--
 -- Teleport data the lobby sends to the game:
---   { source = SOURCE, v = VERSION, map = <Maps key> }
+--   { source = SOURCE, v = VERSION, map = <Maps key>, kind?, hostId? }
+--
+-- Ticket the lobby writes before sending someone to a VIP server
+-- (TICKETS_MAP, key = tostring(UserId), single use, TICKET_TTL):
+--   { v = VERSION, kind = string, hostId = number, placeId = number, issuedAt = number }
 
 return {
 	VERSION = 1,
@@ -24,6 +40,12 @@ return {
 
 	-- MemoryStore hashmap the game writes and the lobby reads
 	DIRECTORY_MAP = "BrowserDirectory1",
+
+	-- VIP servers are built but hidden until the game writes their entries
+	-- and checks tickets on arrival (CLAUDE.md, "VIP servers")
+	VIP_LISTING = false,
+	TICKETS_MAP = "BrowserTickets1",
+	TICKET_TTL = 300,
 
 	-- the test lobby replaces the AR2 Development Hub in its place and keeps
 	-- the hub's names, so test servers' Hub Beacon and join lock work unchanged

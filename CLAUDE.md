@@ -20,7 +20,7 @@ src/Shared/  → ReplicatedStorage.Shared                   Maps.lua (map list +
                                                           Names.lua (server names from JobIds), Platform.lua (client platform + support levels)
 src/Server/  → ServerScriptService.Lobby                  Main.server.lua, Catalog.lua (variant, maps, access, passwords), Directory.lua (reads the
                                                           server list), Teleports.lua, Reserved.lua (single-server locks), TestMaps.lua (test lobby maps),
-                                                          Mock.lua (fake list for unpublished Studio)
+                                                          Vip.lua (VIP servers, built but hidden), Mock.lua (fake list for unpublished Studio)
 src/Client/  → ReplicatedFirst.Browser                    Browser.client.lua (moves the gui into PlayerGui, binds it)
 tools/build-ui.lua                                        command-bar script that builds ReplicatedFirst.Lobby
 ```
@@ -71,6 +71,16 @@ It skips Studio, reserved/VIP servers, Ban Land, and every non-prod place, becau
 **Joining.** The lobby calls `TeleportAsync` server-side. With no instance id, Roblox matchmakes into a public server (the one-click card). With `ServerInstanceId`, it joins a specific server from the list. Teleport data is `{ source = "AR2Lobby", v, map }`. The game doesn't read it yet.
 
 **Universe.** MemoryStore and teleports are per-universe. The lobby must be published **inside the same universe** as the game places it lists. [Directory.lua](src/Server/Directory.lua) resolves each map's place with `AssetService:GetGamePlacesAsync()`. A map with no place in the current universe shows as "coming soon". In unpublished Studio (`GameId == 0`) it falls back to each map's first id and serves a fake server list from [Mock.lua](src/Server/Mock.lua), so the UI can be built and demoed. Teleports there fail straight away with "couldn't join". Once the place is published, Studio reads the real directory.
+
+## VIP servers (built, hidden)
+Directory entries carry a `kind` (see [Protocol.lua](src/Shared/Protocol.lua)); missing means `"public"`. Lobbies skip kinds they don't handle, and an entry only counts if it comes from a place of that kind (a map's `Vip = { [kind] = placeIds }` in Maps.lua). `Protocol.VIP_LISTING` is **off**: nothing VIP is listed or joinable until the game side exists. In Studio, a `ShowVip` attribute on ServerStorage turns on mock VIP rows.
+
+What "VIP" is in the game, and what the lobby does with it:
+- **Freeroam** (the kind that's built): each host has one permanent reserved server on the VIP Freeroam place. The game's Browser Beacon would list it with `kind = "freeroam"`, `hostId`, `locked`, `settings`, and **never** an access code or PrivateServerId. On join, [Vip.lua](src/Server/Vip.lua) re-reads the host's live lock and bans from the game's MemoryStore `Freeroam Configs - 4` (fails closed), reads the access code from the DataStore `Freeroam Servers - 4` (server-side only, cached), writes a single-use ticket to `BrowserTickets1`, and teleports to the VIP place with `ReservedServerAccessCode`. The freeroam server has to accept that ticket on arrival (it currently learns the host from `Freeroam Sessions - 4`, which the lobby must not write: the lobby never writes game stores).
+- **Paid VIP lobbies on Main** (Roblox private servers): strangers can't be teleported into them, so at most listable. Not a kind yet.
+- **Tourney matches**: roster-locked per match. Not a kind.
+
+Rows for VIP servers show "VIP · host", LOCKED in amber, and the host's notable settings in the footer; public servers sort first. Access codes and private server ids never reach a client.
 
 ## Rate limits: keep it cheap
 - MemoryStore budget is per experience: 1000 + 100 × CCU requests/min.

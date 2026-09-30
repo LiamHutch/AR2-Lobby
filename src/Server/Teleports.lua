@@ -7,6 +7,7 @@ local runService = game:GetService("RunService")
 local protocol = require(replicatedStorage.Shared.Protocol)
 local catalog = require(script.Parent.Catalog)
 local reserved = require(script.Parent.Reserved)
+local vip = require(script.Parent.Vip)
 
 local remotes = replicatedStorage.Remotes
 
@@ -26,7 +27,8 @@ local grants = nil
 
 ----
 
--- "joining" | "full" | "closed" | "failed" | "denied" | "password" | "slow" | "unavailable"
+-- "joining" | "full" | "closed" | "failed" | "denied" | "password" | "slow"
+-- | "unavailable" | "locked" | "banned"
 local function sendStatus(client, code)
 	remotes.Status:FireClient(client, code)
 end
@@ -51,7 +53,7 @@ local function writeGrant(client, placeId)
 	end)
 end
 
-local function buildOptions(map, placeId, jobId)
+local function buildOptions(map, placeId, jobId, server)
 	local options = Instance.new("TeleportOptions")
 
 	-- test places read the hub's teleport data (game repo: Hub Beacon)
@@ -65,7 +67,14 @@ local function buildOptions(map, placeId, jobId)
 			source = protocol.SOURCE,
 			v = protocol.VERSION,
 			map = map.Key,
+			kind = server and server.Kind or nil,
+			hostId = server and server.HostId or nil,
 		})
+	end
+
+	-- VIP servers are reserved; Vip:Prepare adds the access code
+	if server and server.Kind ~= "public" then
+		return options
 	end
 
 	if map.SingleServer then
@@ -147,6 +156,25 @@ local function onPlay(directory, client, mapKey, jobId, password)
 		return refuse("closed")
 	end
 
+	local server = jobId and directory:Server(mapKey, jobId)
+	local isVip = server ~= nil and server.Kind ~= "public"
+
+	if isVip then
+		if not vip.Kinds[server.Kind] then
+			return refuse("closed")
+		end
+
+		-- the host's live lock and bans, not the directory's copy
+		local authorized, reason = vip:Authorize(client, server)
+
+		if not authorized then
+			return refuse(reason)
+		end
+
+		-- VIP servers live on their own place
+		placeId = server.PlaceId
+	end
+
 	local allowed, why = catalog:CheckPassword(client, map, type(password) == "string" and password:sub(1, MAX_PASSWORD) or "")
 
 	if not allowed then
@@ -155,10 +183,18 @@ local function onPlay(directory, client, mapKey, jobId, password)
 
 	sendStatus(client, "joining")
 
-	local options = buildOptions(map, placeId, jobId)
+	local options = buildOptions(map, placeId, jobId, server)
 
 	if not options then
 		return refuse("unavailable")
+	end
+
+	if isVip then
+		local prepared, reason = vip:Prepare(client, server, options)
+
+		if not prepared then
+			return refuse(reason)
+		end
 	end
 
 	-- without a grant the test place's lock would kick them on arrival

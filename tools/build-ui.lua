@@ -721,6 +721,7 @@ local function buildBrowser()
 				TextColor3 = BONE,
 				TextTransparency = 0.4,
 				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
 				Text = "",
 			}, 2),
 
@@ -979,6 +980,7 @@ local function rowTemplate()
 			TextSize = 13,
 			TextColor3 = BONE,
 			TextTransparency = 0.58,
+			TextTruncate = Enum.TextTruncate.AtEnd,
 		}, 1),
 
 		cell("Region", UDim2.new(1, -328, 0, 0), UDim2.new(0, 110, 1, 0), {

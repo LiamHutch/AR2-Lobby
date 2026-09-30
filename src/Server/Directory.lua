@@ -7,13 +7,16 @@ local runService = game:GetService("RunService")
 local protocol = require(replicatedStorage.Shared.Protocol)
 local catalog = require(script.Parent.Catalog)
 local reserved = require(script.Parent.Reserved)
+local vip = require(script.Parent.Vip)
 local mock = require(script.Parent.Mock)
 
 local remotes = replicatedStorage.Remotes
 
 local library = {}
 
--- [mapKey] = { Online = number, Servers = { { Id, Players, Max, StartedAt, Region } } }
+-- [mapKey] = { Online = number, Servers = { server } }
+--   server: { Id, Kind, PlaceId, Players, Max, StartedAt, Region? }
+--           plus HostId, Host?, Locked, Tags for VIP kinds (see Vip.lua)
 library.Snapshot = {}
 
 -- [mapKey] = placeId inside this universe
@@ -30,7 +33,10 @@ local directoryName = catalog.IsTest and protocol.HUB_DIRECTORY_MAP or protocol.
 local entryVersion = catalog.IsTest and protocol.HUB_VERSION or protocol.VERSION
 
 local hashMap = not mocking and memoryStores:GetHashMap(directoryName)
-local mapByPlace = {}
+
+-- [placeId] = { Map = mapKey, Kind = kind }; an entry only counts if it comes
+-- from a place of its own kind
+local placeInfo = {}
 
 local lastPoll = -math.huge
 local polling = false
@@ -78,13 +84,29 @@ local function resolvePlaces()
 	-- is still usable in Studio
 	local studioFallback = mocking or (not listed and runService:IsStudio())
 
-	for _, map in catalog.Maps do
-		for _, placeId in map.PlaceIds do
+	local function first(placeIds)
+		for _, placeId in placeIds do
 			if universe[placeId] or studioFallback then
-				library.PlaceByMap[map.Key] = placeId
-				mapByPlace[placeId] = map.Key
+				return placeId
+			end
+		end
 
-				break
+		return nil
+	end
+
+	for _, map in catalog.Maps do
+		local placeId = first(map.PlaceIds)
+
+		if placeId then
+			library.PlaceByMap[map.Key] = placeId
+			placeInfo[placeId] = { Map = map.Key, Kind = "public" }
+		end
+
+		for kind, placeIds in map.Vip or {} do
+			local vipPlace = first(placeIds)
+
+			if vipPlace then
+				placeInfo[vipPlace] = { Map = map.Key, Kind = kind }
 			end
 		end
 	end
@@ -94,9 +116,13 @@ local function readEntries()
 	if mocking then
 		local places = {}
 
-		for mapKey, placeId in library.PlaceByMap do
-			-- a single-server map only ever has the one server
-			table.insert(places, { placeId, catalog.ByKey[mapKey].SingleServer and 1 or nil })
+		for placeId, info in placeInfo do
+			if info.Kind == "public" then
+				-- a single-server map only ever has the one server
+				table.insert(places, { placeId, catalog.ByKey[info.Map].SingleServer and 1 or nil })
+			elseif vip.Kinds[info.Kind] then
+				table.insert(places, { placeId, 5, info.Kind })
+			end
 		end
 
 		return mock:Read(places, entryVersion)
@@ -126,6 +152,11 @@ local function sortServers(a, b)
 
 	if aFull ~= bFull then
 		return bFull
+	end
+
+	-- public servers first, then VIP
+	if a.Kind ~= b.Kind then
+		return a.Kind == "public"
 	end
 
 	if a.Players ~= b.Players then
@@ -162,22 +193,50 @@ local function buildSnapshot(entries)
 			continue
 		end
 
-		local mapKey = mapByPlace[entry.placeId]
+		local kind = type(entry.kind) == "string" and entry.kind or "public"
+		local info = placeInfo[entry.placeId]
 		local players = tonumber(entry.players)
 		local maxPlayers = tonumber(entry.maxPlayers)
 
-		if mapKey and players and maxPlayers and type(entry.jobId) == "string" and belongs(catalog.ByKey[mapKey], entry) then
-			local bucket = snapshot[mapKey]
-			bucket.Online += players
-
-			table.insert(bucket.Servers, {
-				Id = entry.jobId,
-				Players = players,
-				Max = maxPlayers,
-				StartedAt = tonumber(entry.startedAt) or os.time(),
-				Region = type(entry.region) == "string" and entry.region:sub(1, 24) or nil,
-			})
+		-- skip kinds this lobby doesn't list yet, and entries whose kind
+		-- doesn't match the place they came from
+		if not info or info.Kind ~= kind or not vip.Kinds[kind] then
+			continue
 		end
+
+		if not (players and maxPlayers and type(entry.jobId) == "string") then
+			continue
+		end
+
+		local server = {
+			Id = entry.jobId,
+			Kind = kind,
+			PlaceId = entry.placeId,
+			Players = players,
+			Max = maxPlayers,
+			StartedAt = tonumber(entry.startedAt) or os.time(),
+			Region = type(entry.region) == "string" and entry.region:sub(1, 24) or nil,
+		}
+
+		if kind == "public" then
+			if not belongs(catalog.ByKey[info.Map], entry) then
+				continue
+			end
+		else
+			local extra = vip:Describe(kind, entry)
+
+			if not extra then
+				continue
+			end
+
+			for key, value in extra do
+				server[key] = value
+			end
+		end
+
+		local bucket = snapshot[info.Map]
+		bucket.Online += players
+		table.insert(bucket.Servers, server)
 	end
 
 	for _, bucket in snapshot do
