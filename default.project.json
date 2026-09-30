@@ -17,8 +17,7 @@
 				"$className": "Folder",
 				"Directory": { "$className": "RemoteEvent" },
 				"Play": { "$className": "RemoteEvent" },
-				"Status": { "$className": "RemoteEvent" },
-				"Refresh": { "$className": "RemoteEvent" }
+				"Status": { "$className": "RemoteEvent" }
 			}
 		},
 

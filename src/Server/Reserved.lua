@@ -50,8 +50,12 @@ function library:Known(placeId)
 	return cache[placeId] and cache[placeId].Id
 end
 
--- look everything up at boot so the first join doesn't wait on a DataStore
-function library:Prefetch(placeIds)
+-- looks everything up at boot so the first join doesn't wait on a DataStore.
+-- Yields until every lookup is done (failed ones included) or `timeout` passes
+function library:Prefetch(placeIds, timeout)
+	local pending = #placeIds
+	local started = os.clock()
+
 	for _, placeId in placeIds do
 		task.spawn(function()
 			local worked, why = pcall(self.Get, self, placeId)
@@ -59,7 +63,13 @@ function library:Prefetch(placeIds)
 			if not worked then
 				warn("Lobby couldn't get the reserved server for", placeId, why)
 			end
+
+			pending -= 1
 		end)
+	end
+
+	while pending > 0 and os.clock() - started < (timeout or 10) do
+		task.wait(0.2)
 	end
 end
 

@@ -1,8 +1,9 @@
 local playersService = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
-local memoryStores = game:GetService("MemoryStoreService")
+local dataStores = game:GetService("DataStoreService")
 local assetService = game:GetService("AssetService")
 local runService = game:GetService("RunService")
+local serverStorage = game:GetService("ServerStorage")
 
 local protocol = require(replicatedStorage.Shared.Protocol)
 local catalog = require(script.Parent.Catalog)
@@ -15,7 +16,7 @@ local remotes = replicatedStorage.Remotes
 local library = {}
 
 -- [mapKey] = { Online = number, Servers = { server } }
---   server: { Id, Kind, PlaceId, Players, Max, StartedAt, Region? }
+--   server: { Id, Kind, PlaceId, Players, Max, StartedAt, Region?, Version? }
 --           plus HostId, Host?, Locked, Tags for VIP kinds (see Vip.lua)
 library.Snapshot = {}
 
@@ -24,15 +25,21 @@ library.PlaceByMap = {}
 
 ----
 
--- unpublished Studio has no universe, MemoryStore or teleports; fake the
--- server list so the UI can still be built and demoed
-local mocking = runService:IsStudio() and game.GameId == 0
+-- unpublished Studio has no universe, DataStores or teleports; fake the
+-- server list so the UI can still be built and demoed. A MockDirectory
+-- attribute on ServerStorage does the same in a published place, for demos
+local mocking = runService:IsStudio() and (game.GameId == 0 or serverStorage:GetAttribute("MockDirectory") == true)
 
--- prod reads the browser beacon's map; test reads the Hub Beacon's
-local directoryName = catalog.IsTest and protocol.HUB_DIRECTORY_MAP or protocol.DIRECTORY_MAP
-local entryVersion = catalog.IsTest and protocol.HUB_VERSION or protocol.VERSION
+-- prod reads the Browser Beacon's directory; test reads the Hub Beacon's.
+-- Both are sharded DataStores (see Protocol.lua)
+local directoryName = catalog.IsTest and protocol.HUB_DIRECTORY_STORE or protocol.DIRECTORY_STORE
+local shardCount = catalog.IsTest and protocol.HUB_DIRECTORY_SHARDS or protocol.DIRECTORY_SHARDS
 
-local hashMap = not mocking and memoryStores:GetHashMap(directoryName)
+local directoryStore = not mocking and dataStores:GetDataStore(directoryName)
+
+-- [shard index] = the last shard read that worked, reused when a read fails
+-- so one bad read doesn't blank that shard's servers for a poll
+local lastShards = {}
 
 -- [placeId] = { Map = mapKey, Kind = kind }; an entry only counts if it comes
 -- from a place of its own kind
@@ -41,8 +48,11 @@ local placeInfo = {}
 local lastPoll = -math.huge
 local polling = false
 
--- [player] = os.clock() of their last refresh request
-local lastAsk = {}
+-- seconds until the next read: the normal interval, or longer while reads
+-- are failing (see POLL_BACKOFF_MAX)
+local baseInterval = protocol.POLL_INTERVAL
+local interval = baseInterval
+local random = Random.new()
 
 ----
 
@@ -76,7 +86,7 @@ local function listUniversePlaces()
 	return universe, listed
 end
 
--- only places in this universe share our MemoryStore and can be teleported to
+-- only places in this universe share our DataStores and can be teleported to
 local function resolvePlaces()
 	local universe, listed = listUniversePlaces()
 
@@ -125,22 +135,46 @@ local function readEntries()
 			end
 		end
 
-		return mock:Read(places, entryVersion)
+		return mock:Read(places, protocol.DIRECTORY_VERSION)
+	end
+
+	-- the lobby's own joins (reserved servers, VIP lookups) share this budget,
+	-- so skip the poll rather than starve them
+	local budget = dataStores:GetRequestBudgetForRequestType(Enum.DataStoreRequestType.GetAsync)
+
+	if budget < shardCount then
+		error(string.format("only %d GetAsync budget left, %d shards to read", budget, shardCount))
 	end
 
 	local entries = {}
-	local pages = hashMap:ListItemsAsync(protocol.PAGE_SIZE)
+	local failures = 0
+	local now = os.time()
 
-	for _ = 1, protocol.MAX_PAGES do
-		for _, item in pages:GetCurrentPage() do
-			table.insert(entries, item.value)
+	for index = 0, shardCount - 1 do
+		local worked, shard = pcall(directoryStore.GetAsync, directoryStore, protocol.DIRECTORY_SHARD_PREFIX .. index)
+
+		if worked then
+			lastShards[index] = shard
+		else
+			failures += 1
+			warn("Lobby directory shard", index, "read failed:", shard)
+			shard = lastShards[index]
 		end
 
-		if pages.IsFinished then
-			break
-		end
+		local valid = type(shard) == "table" and shard.v == protocol.DIRECTORY_VERSION and type(shard.servers) == "table"
 
-		pages:AdvanceToNextPageAsync()
+		for jobId, entry in valid and shard.servers or {} do
+			-- a server that stopped refreshing is dead, even if its writers
+			-- haven't pruned it yet
+			if type(entry) == "table" and type(entry.updatedAt) == "number" and now - entry.updatedAt <= protocol.DIRECTORY_STALE then
+				entry.jobId = jobId
+				table.insert(entries, entry)
+			end
+		end
+	end
+
+	if failures == shardCount then
+		error("every directory shard read failed")
 	end
 
 	return entries
@@ -186,8 +220,13 @@ local function sortServers(a, b)
 	return a.Id < b.Id
 end
 
+-- [jobId] = true once a hidden server has been logged
+local reportedHidden = {}
+
 -- a single-server map only shows its shared reserved server, not stray
--- reserved servers the same place might also be running
+-- reserved servers the same place might also be running (the lobby can only
+-- send people to the shared one). If the shared one isn't known (its lookup
+-- failed), everything shows rather than nothing
 local function belongs(map, entry)
 	if not map.SingleServer then
 		return true
@@ -195,7 +234,22 @@ local function belongs(map, entry)
 
 	local reservedId = reserved:Known(entry.placeId)
 
-	return reservedId == nil or entry.privateServerId == reservedId
+	if reservedId == nil or entry.privateServerId == reservedId then
+		return true
+	end
+
+	if not reportedHidden[entry.jobId] then
+		reportedHidden[entry.jobId] = true
+		print(string.format(
+			"Lobby: hiding server %s on %s, it isn't the map's shared server (%s vs %s)",
+			tostring(entry.jobId),
+			map.Name,
+			tostring(entry.privateServerId),
+			reservedId
+		))
+	end
+
+	return false
 end
 
 local function buildSnapshot(entries)
@@ -209,7 +263,7 @@ local function buildSnapshot(entries)
 	end
 
 	for _, entry in entries do
-		if type(entry) ~= "table" or entry.v ~= entryVersion then
+		if type(entry) ~= "table" then
 			continue
 		end
 
@@ -236,6 +290,8 @@ local function buildSnapshot(entries)
 			Max = maxPlayers,
 			StartedAt = tonumber(entry.startedAt) or os.time(),
 			Region = shortRegion(entry.region),
+			-- game.PlaceVersion; the test directory's Hub Beacon doesn't send it
+			Version = tonumber(entry.placeVersion),
 		}
 
 		if kind == "public" then
@@ -307,30 +363,20 @@ local function poll()
 
 	polling = false
 
+	-- ±15% so lobby servers that started together drift apart
+	local jitter = random:NextNumber(0.85, 1.15)
+
 	if not worked then
-		warn("Lobby directory read failed:", entries)
+		-- back off instead of adding to the pressure; players keep the last list
+		interval = math.min(math.max(interval, baseInterval) * 2, protocol.POLL_BACKOFF_MAX) * jitter
+		warn(string.format("Lobby directory read failed, next try in %.0fs: %s", interval, tostring(entries)))
 
 		return
 	end
 
+	interval = baseInterval * jitter
 	library.Snapshot = buildSnapshot(entries)
 	sendAll()
-end
-
-local function onRefresh(client)
-	local now = os.clock()
-
-	if now - (lastAsk[client] or -math.huge) < protocol.REFRESH_COOLDOWN then
-		return
-	end
-
-	lastAsk[client] = now
-
-	if now - lastPoll >= protocol.REFRESH_MIN_AGE then
-		poll()
-	else
-		send(client)
-	end
 end
 
 ----
@@ -374,16 +420,14 @@ end
 function library:Start()
 	self:Resolve()
 
-	if catalog.IsTest and not mocking then
-		local placeIds = {}
+	local placeIds = {}
 
+	if catalog.IsTest and not mocking then
 		for mapKey, placeId in self.PlaceByMap do
 			if catalog.ByKey[mapKey].SingleServer then
 				table.insert(placeIds, placeId)
 			end
 		end
-
-		reserved:Prefetch(placeIds)
 
 		task.spawn(function()
 			catalog:FetchUpdated()
@@ -398,17 +442,18 @@ function library:Start()
 	end
 
 	playersService.PlayerRemoving:Connect(function(client)
-		lastAsk[client] = nil
 		catalog:Forget(client)
 	end)
-
-	remotes.Refresh.OnServerEvent:Connect(onRefresh)
 
 	-- an empty lobby server has nobody to show the list to, so it skips reads;
 	-- the 1s tick means the first arrival gets a fresh list almost immediately
 	task.spawn(function()
+		-- the first read waits for the shared servers' ids, so a stray server
+		-- doesn't show on the first poll and vanish on the next
+		reserved:Prefetch(placeIds, 10)
+
 		while true do
-			if os.clock() - lastPoll >= protocol.POLL_INTERVAL and #playersService:GetPlayers() > 0 then
+			if os.clock() - lastPoll >= interval and #playersService:GetPlayers() > 0 then
 				poll()
 			end
 

@@ -36,10 +36,11 @@ end
 library.Variant = pickVariant()
 library.IsTest = library.Variant == "test"
 
-local placeConfig = require(script.Parent.PlaceConfig):Load()
+local placeConfigLibrary = require(script.Parent.PlaceConfig)
+local placeConfig = placeConfigLibrary:Load(library.Variant)
 
 if not placeConfig and library.IsTest then
-	warn("Test lobby has no ServerStorage.Teleports.Active config, so it has no maps")
+	warn("Test lobby has no ServerStorage." .. placeConfigLibrary.Roots.test .. ".Active config, so it has no maps")
 end
 
 -- group role -> access tier; only maps with an Access list use it
@@ -51,10 +52,13 @@ library.ByKey = {}
 local sourceMaps = placeConfig and placeConfig.Maps or (library.IsTest and {} or require(replicatedStorage.Shared.Maps))
 
 for _, source in sourceMaps do
-	local map = table.clone(source)
+	-- place config maps arrive normalised; Maps.lua entries get the same treatment
+	local map = placeConfig and source or placeConfigLibrary.Normalize(source)
 
-	table.insert(library.Maps, map)
-	library.ByKey[map.Key] = map
+	if map then
+		table.insert(library.Maps, map)
+		library.ByKey[map.Key] = map
+	end
 end
 
 ----
@@ -150,7 +154,6 @@ function library:PublicInfo(map, live)
 		Stats = stats,
 		Platforms = map.Platforms,
 		Images = map.Images,
-		CardImages = map.CardImages,
 		Backdrop = map.Backdrop,
 		Password = self:NeedsPassword(map),
 		SingleServer = map.SingleServer == true,

@@ -26,6 +26,10 @@ local FOCUS_HEIGHT = 0.78
 local MARGIN_USE = 0.8
 local MAX_SHIFT = 0.11
 
+-- how much of each move is used: lower is slower panning and zooming over
+-- the same time, 1 is the full range the margins allow
+local TRAVEL = 0.55
+
 local FOV = 20
 local SKEW = math.rad(3) -- how far the camera swings off-axis on skew moves
 
@@ -153,7 +157,13 @@ function library:move()
 	local random = self.random
 	local side = random:NextNumber() < 0.5 and -1 or 1
 
+	shiftX *= TRAVEL
+	shiftY *= TRAVEL
+
 	local function camera(x, y, zoom, skew)
+		zoom = 1 - (1 - zoom) * TRAVEL
+		skew *= TRAVEL
+
 		local position = Vector3.new(x + distance * math.tan(skew), y, distance * zoom)
 
 		return CFrame.lookAt(position, Vector3.new(x, y, 0))

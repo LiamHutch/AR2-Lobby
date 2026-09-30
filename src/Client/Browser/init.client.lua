@@ -2,7 +2,6 @@ local playersService = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
 local starterGui = game:GetService("StarterGui")
 local tweenService = game:GetService("TweenService")
-local userInputService = game:GetService("UserInputService")
 local guiService = game:GetService("GuiService")
 local contextActionService = game:GetService("ContextActionService")
 local soundService = game:GetService("SoundService")
@@ -10,6 +9,10 @@ local soundService = game:GetService("SoundService")
 -- Runs from ReplicatedFirst next to the Lobby gui. Characters never load in the
 -- lobby, so StarterGui is never copied into PlayerGui; we move the gui ourselves.
 local playerGui = playersService.LocalPlayer:WaitForChild("PlayerGui")
+
+-- landscape only on phones and tablets; the stage is laid out wide. Set on
+-- PlayerGui because StarterGui's copy only lands with a character
+playerGui.ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
 local gui = script.Parent:WaitForChild("Lobby")
 gui.Parent = playerGui
 
@@ -20,7 +23,6 @@ end
 
 local names = require(replicatedStorage.Shared.Names)
 local platform = require(replicatedStorage.Shared.Platform)
-local protocol = require(replicatedStorage.Shared.Protocol)
 local slideshow = require(script.Slideshow)
 local loading = require(script.Loading)
 
@@ -36,6 +38,16 @@ local browser = mapView.Browser
 local footer = browser.Footer
 local statusBox = stage.Status
 
+-- a scrolling frame can sit in an EdgeFade CanvasGroup (see edgeFade)
+local function scroller(parent, name)
+	local fade = parent:FindFirstChild("EdgeFade")
+
+	return fade and fade:FindFirstChild(name) or parent[name]
+end
+
+local cardRow = scroller(picker, "Maps")
+local serverList = scroller(browser, "List")
+
 -- optional: without it teleports use Roblox's default screen
 local loadingGui = script.Parent:FindFirstChild("LoadingGui")
 
@@ -47,13 +59,22 @@ end
 
 local STAGE = Vector2.new(1440, 810)
 
--- screen pixels kept clear around the stage, on top of Roblox's top bar
+-- screen pixels kept clear around the stage, on top of Roblox's top bar;
+-- phones (short screens) get the smaller one, they can't spare the room
 local MARGIN = 24
+local SMALL_MARGIN = 8
+local SMALL_SCREEN = 600 -- screen height below which a screen counts as small
+
+-- stage pixels between the picker's first and last card and the stage edge
+-- when the row is wider than the stage and scrolls
+local CARD_EDGE = 64
+
+-- stage pixels a scrolling list takes to fade out at an edge with more past it
+local EDGE_FADE = 36
 
 local SLIDE = 6
 local CARD_CYCLE = 8
 local QUICK = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local SPIN = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local AMBIENT_FADE = TweenInfo.new(8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 
 local BONE = Color3.fromRGB(229, 226, 219)
@@ -99,7 +120,6 @@ local openMap = nil
 local selectedId = nil
 local sortMode = "players"
 local joining = false
-local lastRefresh = -math.huge
 
 ----
 
@@ -141,16 +161,6 @@ local function clear(bin)
 		if child:IsA("GuiObject") then
 			child:Destroy()
 		end
-	end
-end
-
-local function usingGamepad()
-	return userInputService:GetLastInputType().Name:find("Gamepad") ~= nil
-end
-
-local function focus(object)
-	if object and usingGamepad() then
-		guiService.SelectedObject = object
 	end
 end
 
@@ -255,8 +265,9 @@ local function drawChips(bin, map)
 		chip.Name = entry.Key
 		chip.LayoutOrder = index
 		chip.Stroke.Color = color
-		-- only the chip for the platform you're on gets an outline
-		chip.Stroke.Transparency = entry.Key == here and 0.3 or 1
+		-- only the chip for the platform you're on gets an outline (both PS4
+		-- and PS5 on PlayStation, which can't tell them apart)
+		chip.Stroke.Transparency = platform:Covers(here, entry.Key) and 0.3 or 1
 
 		if entry.Icon ~= "" then
 			chip.Icon.Image = entry.Icon
@@ -291,24 +302,6 @@ local function play(mapKey, jobId)
 	setStatus("joining")
 	loading.Prepare(map.Title)
 	remotes.Play:FireServer(mapKey, jobId, password)
-end
-
-local function refresh()
-	if os.clock() - lastRefresh < protocol.REFRESH_COOLDOWN then
-		return
-	end
-
-	lastRefresh = os.clock()
-	remotes.Refresh:FireServer()
-
-	-- an icon image spins itself; the drawn stand-in spins its ring
-	local icon = info.Buttons.Refresh.Icon
-	local spinning = icon:IsA("ImageLabel") and icon or icon:FindFirstChild("Ring")
-
-	if spinning then
-		spinning.Rotation = 0
-		tweenService:Create(spinning, SPIN, { Rotation = 360 }):Play()
-	end
 end
 
 ----
@@ -375,7 +368,7 @@ local function makeRow(jobId)
 		end
 	end)
 
-	row.Parent = browser.List
+	row.Parent = serverList
 
 	return row
 end
@@ -390,6 +383,35 @@ function drawServers()
 	local now = workspace:GetServerTimeNow()
 	local picked = nil
 	local seen = {}
+	local newest = 0
+
+	for _, server in servers do
+		newest = math.max(newest, server.Version or 0)
+	end
+
+	-- "v1234" (the game's PlaceVersion), amber on a server running an older
+	-- build than the newest one up for this map; nil when the beacon didn't say
+	local function version(server)
+		if not server.Version then
+			return nil
+		end
+
+		local text = "v" .. server.Version
+
+		if server.Version < newest then
+			-- full opacity: the id line itself is faint
+			return string.format('<font color="#%s" transparency="0">%s</font>', AMBER:ToHex(), text)
+		end
+
+		return text
+	end
+
+	local function idLine(server)
+		local line = server.Kind ~= "public" and ("VIP  ·  " .. (server.Host or "…")) or names:ShortId(server.Id)
+		local build = version(server)
+
+		return build and (line .. "  ·  " .. build) or line
+	end
 
 	sortServers(servers)
 
@@ -426,10 +448,8 @@ function drawServers()
 		row.Stroke.Enabled = chosen
 		row.HighlightBox.Visible = chosen
 
-		local isVip = server.Kind ~= "public"
-
 		setText(row.Server, names:ForJob(server.Id))
-		setText(row.Id, isVip and ("VIP  ·  " .. (server.Host or "…")) or names:ShortId(server.Id))
+		setText(row.Id, idLine(server))
 		setText(row.Region, server.Region or "—")
 		setText(row.Uptime, formatUptime(math.max(0, now - server.StartedAt)))
 		setText(row.Players, full and "FULL" or server.Locked and "LOCKED" or string.format("%d / %d", server.Players, server.Max))
@@ -457,7 +477,7 @@ function drawServers()
 	if picked then
 		setText(footer.ServerName, names:ForJob(picked.Id):upper())
 		local meta = {
-			picked.Kind ~= "public" and ("VIP  ·  " .. (picked.Host or "…")) or names:ShortId(picked.Id),
+			idLine(picked),
 			picked.Region or "—",
 			"up " .. formatUptime(math.max(0, now - picked.StartedAt)),
 			string.format("%d / %d", picked.Players, picked.Max),
@@ -554,12 +574,16 @@ local function startSlides(images)
 end
 
 local function drawNotice(map)
-	local support = platform:Support(map, here)
-	local long = platform.ByKey[here].Long
+	-- `worst` is set when a PlayStation client can't be told apart and only
+	-- one generation is supported: warn about that one, don't block
+	local support, long, worst = platform:Support(map, here)
 
 	info.Notice.Visible = support ~= "ok"
 
-	if support == "warn" then
+	if worst == "blocked" then
+		setText(info.Notice, spaced("not available on " .. long))
+		info.Notice.Text.TextColor3 = AMBER
+	elseif support == "warn" then
 		setText(info.Notice, spaced("limited support on " .. long))
 		info.Notice.Text.TextColor3 = AMBER
 	elseif support == "blocked" then
@@ -621,15 +645,12 @@ local function openMapView(map)
 	mapView.Visible = true
 
 	playSound("MapOpen")
-	focus(info.Buttons.Play.Button)
 end
 
 local function closeMapView()
 	if not openMap then
 		return
 	end
-
-	local card = cards[openMap.Key]
 
 	openMap = nil
 
@@ -643,7 +664,6 @@ local function closeMapView()
 	picker.Visible = true
 
 	playSound("MapClose")
-	focus(card and card.Button)
 end
 
 ----
@@ -677,13 +697,6 @@ local function makeCard(map, index)
 	setText(card.Title, titleText(map))
 	drawChips(card.Platforms, map)
 
-	-- portrait shots first, then the landscape ones cropped to fit
-	local cardArt = table.clone(map.CardImages or {})
-
-	for _, image in map.Images or {} do
-		table.insert(cardArt, image)
-	end
-
 	local art = card.Clip:FindFirstChild("Art")
 
 	if art then
@@ -697,7 +710,8 @@ local function makeCard(map, index)
 		seed = index * 7919,
 	})
 
-	show:SetImages(cardArt)
+	-- the same art as the preview, cropped to the card
+	show:SetImages(map.Images or {})
 	card.Destroying:Connect(function()
 		show:Destroy()
 	end)
@@ -715,7 +729,7 @@ local function makeCard(map, index)
 	end)
 
 	cards[map.Key] = card
-	card.Parent = picker.Maps
+	card.Parent = cardRow
 
 	drawCard(map)
 end
@@ -728,10 +742,8 @@ local function syncMaps(list)
 
 	-- fetch every map's art now, so opening a map never waits on its images
 	for _, map in list do
-		for _, set in { map.CardImages or {}, map.Images or {} } do
-			for _, image in set do
-				table.insert(art, image)
-			end
+		for _, image in map.Images or {} do
+			table.insert(art, image)
 		end
 	end
 
@@ -776,31 +788,72 @@ end
 
 ----
 
--- how much of the top of the screen Roblox's own buttons take
-local function topBarHeight()
-	local height = guiService:GetGuiInset().Y
+-- the device's safe area (notches, rounded corners), read off an empty
+-- ScreenGui inset to it; the lobby's own gui ignores it for the background
+local safeArea = Instance.new("ScreenGui")
+safeArea.Name = "LobbySafeArea"
+safeArea.ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets
+safeArea.Parent = playerGui
+
+-- the corner Roblox's own top bar buttons take: { right edge, bottom edge }.
+-- TopbarInset is the free part of the bar, starting where the buttons end
+local function topBarCorner()
 	local found, inset = pcall(function()
 		return guiService.TopbarInset
 	end)
 
-	if found and inset then
-		height = math.max(height, inset.Max.Y)
+	if found and inset and inset.Max.Y > 0 then
+		return Vector2.new(inset.Min.X, inset.Max.Y), inset.Max.X
 	end
 
-	return height
+	return Vector2.new(gui.AbsoluteSize.X, guiService:GetGuiInset().Y), gui.AbsoluteSize.X
 end
 
--- the gui covers the whole screen so the background runs under the top bar;
--- the stage (laid out at 1440x810) scales to fit below it, inside a margin
+-- the gui covers the whole screen so the background runs under the top bar.
+-- The stage (laid out at 1440x810) scales to the biggest fit that stays clear
+-- of Roblox's buttons: either below the whole bar, or beside the buttons at
+-- full height. Wide, short phone screens do much better beside
 local function fit()
 	local size = gui.AbsoluteSize
-	local top = topBarHeight()
-	local width = size.X - MARGIN * 2
-	local height = size.Y - top - MARGIN * 2
+	-- AbsolutePosition is measured from below the top bar, not the screen's
+	-- corner, so bring the safe area into the gui's own space, where the
+	-- stage's Position and TopbarInset both live
+	local safeMin = safeArea.AbsolutePosition - gui.AbsolutePosition
+	local safeMax = safeMin + safeArea.AbsoluteSize
 
-	if width > 0 and height > 0 then
-		stage.Scale.Scale = math.min(width / STAGE.X, height / STAGE.Y)
-		stage.Position = UDim2.new(0.5, 0, 0.5, top / 2)
+	if safeArea.AbsoluteSize.X <= 0 or safeArea.AbsoluteSize.Y <= 0 then
+		safeMin, safeMax = Vector2.zero, size
+	end
+
+	local corner, barRight = topBarCorner()
+	local margin = size.Y < SMALL_SCREEN and SMALL_MARGIN or MARGIN
+
+	local areas = {
+		-- below the bar
+		{ Vector2.new(safeMin.X, math.max(safeMin.Y, corner.Y)), safeMax },
+		-- beside the buttons, between them and anything Roblox puts on the right
+		{ Vector2.new(math.max(safeMin.X, corner.X), safeMin.Y), Vector2.new(math.min(safeMax.X, barRight), safeMax.Y) },
+	}
+
+	local bestScale, bestCentre = 0, size / 2
+
+	for _, area in areas do
+		local low = area[1] + Vector2.one * margin
+		local high = area[2] - Vector2.one * margin
+		local room = high - low
+
+		if room.X > 0 and room.Y > 0 then
+			local scale = math.min(room.X / STAGE.X, room.Y / STAGE.Y)
+
+			if scale > bestScale then
+				bestScale, bestCentre = scale, (low + high) / 2
+			end
+		end
+	end
+
+	if bestScale > 0 then
+		stage.Scale.Scale = bestScale
+		stage.Position = UDim2.fromOffset(math.floor(bestCentre.X), math.floor(bestCentre.Y))
 	end
 end
 
@@ -808,21 +861,97 @@ for _, coreGui in { Enum.CoreGuiType.Backpack, Enum.CoreGuiType.Health, Enum.Cor
 	pcall(starterGui.SetCoreGuiEnabled, starterGui, coreGui, false)
 end
 
+-- the picker row: centred while the cards fit, otherwise starting at the
+-- edge and scrolling. A centred UIListLayout in a scrolling frame pushes the
+-- first cards off the left edge, out of reach, so the padding centres it
+local function centreCards()
+	local row = cardRow
+	local layout = row:FindFirstChildOfClass("UIListLayout")
+	local padding = row:FindFirstChildOfClass("UIPadding")
+	local scale = stage.Scale.Scale
+
+	if not layout or not padding or scale <= 0 then
+		return
+	end
+
+	local content = layout.AbsoluteContentSize.X / scale
+	local width = row.AbsoluteSize.X / scale
+	local side = math.max(CARD_EDGE, math.floor((width - content) / 2))
+
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	padding.PaddingLeft = UDim.new(0, side)
+	padding.PaddingRight = UDim.new(0, side)
+end
+
 fit()
+centreCards()
 startAmbient()
 gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+gui:GetPropertyChangedSignal("AbsolutePosition"):Connect(fit)
+cardRow:FindFirstChildOfClass("UIListLayout"):GetPropertyChangedSignal("AbsoluteContentSize"):Connect(centreCards)
+cardRow:GetPropertyChangedSignal("AbsoluteSize"):Connect(centreCards)
+
+-- the game's trick: a scrolling frame in a CanvasGroup whose UIGradient fades
+-- its edges, so items scroll into the background instead of being cut off.
+-- An edge only fades once there's more to scroll that way
+local function edgeFade(list)
+	local group = list.Parent
+	local gradient = group:IsA("CanvasGroup") and group:FindFirstChildOfClass("UIGradient")
+
+	if not gradient then
+		return
+	end
+
+	local vertical = list.ScrollingDirection == Enum.ScrollingDirection.Y
+	gradient.Rotation = vertical and 90 or 0
+
+	local function update()
+		local window = list.AbsoluteWindowSize
+		local canvas = list.AbsoluteCanvasSize
+		local length = vertical and window.Y or window.X
+		local fade = EDGE_FADE * stage.Scale.Scale
+
+		if length <= 0 or fade <= 0 then
+			return
+		end
+
+		local before = vertical and list.CanvasPosition.Y or list.CanvasPosition.X
+		local after = (vertical and canvas.Y or canvas.X) - length - before
+		local width = math.min(fade / length, 0.25)
+
+		gradient.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, math.clamp(before / fade, 0, 1)),
+			NumberSequenceKeypoint.new(width, 0),
+			NumberSequenceKeypoint.new(1 - width, 0),
+			NumberSequenceKeypoint.new(1, math.clamp(after / fade, 0, 1)),
+		})
+	end
+
+	for _, property in { "CanvasPosition", "AbsoluteCanvasSize", "AbsoluteWindowSize" } do
+		list:GetPropertyChangedSignal(property):Connect(update)
+	end
+
+	update()
+end
+
+edgeFade(cardRow)
+edgeFade(serverList)
+safeArea:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+safeArea:GetPropertyChangedSignal("AbsolutePosition"):Connect(fit)
 pcall(function()
 	guiService:GetPropertyChangedSignal("TopbarInset"):Connect(fit)
 end)
 
--- gamepad focus uses the game's highlight box instead of Roblox's default ring
+-- Controllers use Roblox's virtual cursor (StarterGui.VirtualCursorMode =
+-- Enabled in the place, like the game; scripts can't set it), which hovers
+-- and clicks like a mouse. This ring only shows if someone uses classic
+-- selection anyway
 local selection = templates.Selection:Clone()
 selection.Visible = true
 playerGui.SelectionImageObject = selection
 
 -- closing plays MapClose itself (gamepad B closes too)
 bindButton(info.Buttons.Back, closeMapView, false)
-bindButton(info.Buttons.Refresh, refresh)
 
 bindButton(info.Buttons.Play, function()
 	if openMap then
@@ -865,24 +994,10 @@ contextActionService:BindAction("LobbyBack", function(_, state)
 	return Enum.ContextActionResult.Pass
 end, false, Enum.KeyCode.ButtonB)
 
-contextActionService:BindAction("LobbyRefresh", function(_, state)
-	if state == Enum.UserInputState.Begin and openMap then
-		refresh()
-	end
-
-	return Enum.ContextActionResult.Pass
-end, false, Enum.KeyCode.ButtonX)
-
 remotes.Directory.OnClientEvent:Connect(function(payload)
-	local first = next(cards) == nil
-
 	snapshot = payload and payload.Servers or {}
 	syncMaps(payload and payload.Maps or {})
 	drawServers()
-
-	if first and maps[1] then
-		focus(cards[maps[1].Key].Button)
-	end
 end)
 
 -- a paid VIP server sends everyone on to the host's own server, so the

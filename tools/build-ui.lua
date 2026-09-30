@@ -32,7 +32,6 @@ local HIGHLIGHT = "rbxassetid://6116907099"
 local GRUNGE = "rbxassetid://104544475726279"
 local TORN_EDGE = "rbxassetid://129891927624984"
 local BACK_ICON = "rbxassetid://90333380641559"
-local REFRESH_ICON = "" -- none in the game yet; a drawn ring stands in
 
 local STAGE = Vector2.new(1440, 810)
 
@@ -132,6 +131,34 @@ local function shadow(transparency)
 	})
 end
 
+-- a real drop shadow under the soft halo, so floating things sit off the
+-- background: deep for cards and the preview, shallow for buttons and chips
+local function lift(deep)
+	return make("UIShadow", {
+		Name = "DropShadow",
+		Color = BLACK,
+		Transparency = deep and 0.4 or 0.55,
+		BlurRadius = UDim.new(0, deep and 28 or 12),
+		Offset = UDim2.fromOffset(0, deep and 10 or 4),
+		Spread = UDim2.new(),
+	})
+end
+
+-- a scrolling frame inside a CanvasGroup, the game's trick for lists that
+-- fade into the background at their edges; the client drives the UIGradient
+-- as it scrolls. props place the group; the frame fills it
+local function edgeFade(props, scroller)
+	props.Name = "EdgeFade"
+	props.BackgroundTransparency = 1
+	props.BorderSizePixel = 0
+
+	scroller.AnchorPoint = Vector2.zero
+	scroller.Position = UDim2.new()
+	scroller.Size = UDim2.fromScale(1, 1)
+
+	return make("CanvasGroup", props, { make("UIGradient", {}), scroller })
+end
+
 -- the highlight's line sits ~13px inside its edge; small things pass a
 -- smaller sliceScale or the line lands in the middle of them
 local function highlight(sliceScale)
@@ -193,6 +220,7 @@ local function button(name, size, stroke, tint, content)
 		}),
 
 		shadow(0.7),
+		lift(),
 		content,
 		highlight(),
 		hitbox(),
@@ -277,6 +305,7 @@ local function passwordField()
 		}),
 
 		shadow(0.7),
+		lift(),
 
 		make("TextBox", {
 			Name = "Input",
@@ -449,20 +478,41 @@ local function buildPicker()
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 	}, {
-		make("ScrollingFrame", {
-			Name = "Maps",
+		-- top right, well away from Roblox's buttons in the top-left corner
+		text("Heading", {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -64, 0, 20),
+			Size = UDim2.fromOffset(600, 50),
+		}, {
+			FontFace = font(Enum.FontWeight.Heavy),
+			TextSize = 44,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = "M A P   S E L E C T I O N",
+		}, 4),
+
+		edgeFade({
 			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.fromScale(0, 0.5),
+			Position = UDim2.new(0, 0, 0.5, 20),
 			Size = UDim2.new(1, 0, 0, 700),
+		}, make("ScrollingFrame", {
+			Name = "Maps",
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			CanvasSize = UDim2.new(),
 			AutomaticCanvasSize = Enum.AutomaticSize.X,
 			ScrollingDirection = Enum.ScrollingDirection.X,
-			ScrollBarThickness = 0,
+			-- a thin bar under the cards, shown once there are more maps than fit
+			ScrollBarThickness = 3,
+			ScrollBarImageColor3 = BONE,
+			ScrollBarImageTransparency = 0.6,
+			TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
+			MidImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
+			BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
 		}, {
+			-- left-aligned: the client centres the row with the padding while
+			-- it fits (centring here would push overflowing cards out of reach)
 			list(Enum.FillDirection.Horizontal, 36, {
-				HorizontalAlignment = Enum.HorizontalAlignment.Center,
 				VerticalAlignment = Enum.VerticalAlignment.Center,
 			}),
 
@@ -470,7 +520,7 @@ local function buildPicker()
 				PaddingLeft = UDim.new(0, 64),
 				PaddingRight = UDim.new(0, 64),
 			}),
-		}),
+		})),
 	})
 end
 
@@ -570,9 +620,11 @@ local function buildInfo()
 			Name = "Preview",
 			LayoutOrder = 8,
 			Size = UDim2.fromOffset(600, 338),
-			BackgroundTransparency = 1,
+			BackgroundColor3 = PANEL,
+			BorderSizePixel = 0,
 		}, {
 			shadow(0.5),
+			lift(true),
 
 			-- the client's slideshow adds its viewports here (ZIndex 1-2)
 			make("Frame", {
@@ -634,9 +686,8 @@ local function buildInfo()
 		}, {
 			list(Enum.FillDirection.Horizontal, 12),
 			ordered(iconButton("Back", BACK_ICON), 1),
-			ordered(textButton("Play", UDim2.fromOffset(283, 60), "PLAY"), 2),
-			ordered(iconButton("Refresh", REFRESH_ICON), 3),
-			ordered(passwordField(), 4),
+			ordered(textButton("Play", UDim2.fromOffset(355, 60), "PLAY"), 2),
+			ordered(passwordField(), 3),
 		}),
 	})
 end
@@ -659,6 +710,7 @@ local function sortChip(name, label, order, width)
 			LineJoinMode = Enum.LineJoinMode.Miter,
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		}),
+		lift(),
 
 		make("TextLabel", {
 			Name = "Label",
@@ -733,16 +785,18 @@ local function buildBrowser()
 			column("Players", "P L A Y E R S", UDim2.new(1, -104, 0, 0), UDim2.new(0, 90, 1, 0), Enum.TextXAlignment.Right),
 		}),
 
-		make("ScrollingFrame", {
-			Name = "List",
+		edgeFade({
 			Position = UDim2.fromOffset(0, 88),
 			Size = UDim2.new(1, 0, 1, -88 - 96),
+		}, make("ScrollingFrame", {
+			Name = "List",
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			CanvasSize = UDim2.new(),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
 			ScrollingDirection = Enum.ScrollingDirection.Y,
 			ScrollBarThickness = 0,
+			ScrollBarImageTransparency = 1,
 		}, {
 			list(Enum.FillDirection.Vertical, 4),
 
@@ -753,7 +807,7 @@ local function buildBrowser()
 				PaddingLeft = UDim.new(0, 6),
 				PaddingRight = UDim.new(0, 6),
 			}),
-		}),
+		})),
 
 		text("Empty", {
 			AnchorPoint = Vector2.new(0.5, 0),
@@ -791,6 +845,7 @@ local function buildBrowser()
 				TextTransparency = 0.4,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextTruncate = Enum.TextTruncate.AtEnd,
+				RichText = true, -- an outdated version shows in amber
 				Text = "",
 			}, 2),
 
@@ -867,6 +922,7 @@ local function chipTemplate()
 			LineJoinMode = Enum.LineJoinMode.Miter,
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		}),
+		lift(),
 		make("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9) }),
 		list(Enum.FillDirection.Horizontal, 5, { VerticalAlignment = Enum.VerticalAlignment.Center }),
 
@@ -964,6 +1020,7 @@ local function cardTemplate()
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		}),
 		shadow(0.5),
+		lift(true),
 
 		make("Frame", {
 			Name = "Clip",
@@ -1085,6 +1142,7 @@ local function rowTemplate()
 			TextColor3 = BONE,
 			TextTransparency = 0.58,
 			TextTruncate = Enum.TextTruncate.AtEnd,
+			RichText = true, -- an outdated version shows in amber
 		}, 1),
 
 		cell("Region", UDim2.new(1, -386, 0, 0), UDim2.new(0, 170, 1, 0), {

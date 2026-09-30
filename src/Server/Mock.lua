@@ -1,4 +1,4 @@
--- Fake directory entries for unpublished Studio, which has no MemoryStore and
+-- Fake directory entries for unpublished Studio, which has no DataStores and
 -- can't teleport. Same shape as what the game's browser beacon writes, so the
 -- real snapshot code runs on it. Never used outside Studio.
 
@@ -30,7 +30,8 @@ local function seed(placeId, count, version, kind)
 			players = index == 1 and MAX_PLAYERS or random:NextInteger(0, MAX_PLAYERS - 1),
 			maxPlayers = MAX_PLAYERS,
 			startedAt = os.time() - random:NextInteger(60, 8 * 3600),
-			placeVersion = 1,
+			-- mostly the current build, the odd server still on the last one
+			placeVersion = index % 4 == 0 and 411 or 412,
 			region = REGIONS[random:NextInteger(1, #REGIONS)],
 		}
 

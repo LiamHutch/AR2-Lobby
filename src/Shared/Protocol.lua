@@ -2,18 +2,38 @@
 -- KEEP IN SYNC with the BROWSER_* fields in the game's
 -- ApocalypseRising2/src/Server/Configs/HubProtocol.lua.
 --
--- Directory entry written by each listed game server (key = JobId):
+-- The server directory lives in a DataStore, not MemoryStore (MemoryStore
+-- budget is kept for other things). One key per server would need a read per
+-- server to list them, so servers share SHARDS keys instead:
+--
+--   key "<SHARD_PREFIX><n>", n = 0 .. SHARDS - 1
+--   value { v = DIRECTORY_VERSION, servers = { [jobId] = entry } }
+--
+-- Each game server picks its shard from its JobId (shardFor below; both sides
+-- must agree), and with UpdateAsync:
+--   - writes its entry with updatedAt = os.time() every heartbeat (~60s) and
+--     on population changes (debounced ~30s)
+--   - drops any entry in the shard whose updatedAt is older than
+--     DIRECTORY_STALE: a server that stopped refreshing is dead
+--   - removes its own entry in BindToClose
+-- The lobby reads every shard each poll and ignores entries older than
+-- DIRECTORY_STALE, so a crashed server drops off within a few minutes.
+--
+-- shardFor(jobId) = (sum of the JobId's bytes) % SHARDS
+--
+-- Directory entry (the value under servers[jobId]):
 --   {
---     v = VERSION,
+--     updatedAt = number,     -- unix time of this write; cold = dead
 --     placeId = number,
 --     jobId = string,
 --     players = number,
 --     maxPlayers = number,
 --     startedAt = number,     -- unix time the server booted
 --     placeVersion = number,  -- game.PlaceVersion, spots outdated servers
---     region = string?,       -- coarse location, e.g. "US East"; optional,
---                             -- older beacons don't send it
+--     region = string?,       -- the game's "City - Region", e.g. "Ashburn - Virginia"
 --     kind = string?,         -- see KINDS; missing means "public"
+--     privateServerId = string?, -- test directory only: single-server maps
+--                             -- list just their shared reserved server
 --
 --     -- VIP kinds only (never an access code or PrivateServerId):
 --     hostId = number,        -- the host's UserId
@@ -33,13 +53,21 @@
 -- Ticket the lobby writes before sending someone to a VIP server
 -- (TICKETS_MAP, key = tostring(UserId), single use, TICKET_TTL):
 --   { v = VERSION, kind = string, hostId = number, placeId = number, issuedAt = number }
+--   (still MemoryStore: one short-lived key per VIP join)
 
 return {
 	VERSION = 1,
 	SOURCE = "AR2Lobby",
 
-	-- MemoryStore hashmap the game writes and the lobby reads
-	DIRECTORY_MAP = "BrowserDirectory1",
+	-- the directory DataStores (see the top of this file). Prod has many more
+	-- servers, so more shards: fewer servers writing each key, and one lobby
+	-- poll is still only SHARDS reads
+	DIRECTORY_STORE = "BrowserDirectory2",
+	DIRECTORY_SHARDS = 20,
+	DIRECTORY_VERSION = 1,
+	DIRECTORY_SHARD_PREFIX = "shard-",
+	-- seconds without a refresh before an entry counts as a dead server
+	DIRECTORY_STALE = 180,
 
 	-- VIP servers are built but hidden until the game writes their entries
 	-- and checks tickets on arrival (CLAUDE.md, "VIP servers")
@@ -71,7 +99,9 @@ return {
 	TEST_LOBBY_PLACE_ID = 9350655892,
 	HUB_VERSION = 1,
 	HUB_SOURCE = "AR2Hub",
-	HUB_DIRECTORY_MAP = "HubServerDirectory1",
+	-- the test directory: same shard format as DIRECTORY_STORE, fewer shards
+	HUB_DIRECTORY_STORE = "HubServerDirectory2",
+	HUB_DIRECTORY_SHARDS = 2,
 	HUB_GRANTS_MAP = "HubTeleportGrants1",
 	HUB_GRANT_TTL = 300,
 
@@ -83,15 +113,15 @@ return {
 	-- wrong passwords allowed per player per minute
 	PASSWORD_ATTEMPTS = 5,
 
-	-- lobby read budget; each lobby server reads once per interval and fans
-	-- the result out to its players, clients never touch MemoryStore
-	POLL_INTERVAL = 15,
+	-- lobby read budget; each lobby server reads every shard once per
+	-- interval (SHARDS GetAsync calls) and fans the result out to its players.
+	-- Clients never read the directory, and there's no refresh button: lists
+	-- update on their own. 20 shards every 30s is 40 reads a minute, inside
+	-- even an empty lobby server's GetAsync budget (60 + 10 per player)
+	POLL_INTERVAL = 30,
 
-	-- the refresh button reads early only if the snapshot is this old, and
-	-- that read is shared by the whole lobby server, not one per player
-	REFRESH_MIN_AGE = 5,
-	REFRESH_COOLDOWN = 3,
-	PAGE_SIZE = 200,
-	MAX_PAGES = 5,
+	-- after a failed read, or too little DataStore budget to read every shard,
+	-- the interval doubles per failure up to this, and resets on a good read
+	POLL_BACKOFF_MAX = 120,
 	MAX_SERVERS_PER_MAP = 50,
 }
