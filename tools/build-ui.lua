@@ -988,6 +988,7 @@ local function rowTemplate()
 			TextSize = 16,
 			TextColor3 = BONE,
 			TextTransparency = 0.3,
+			TextTruncate = Enum.TextTruncate.AtEnd,
 		}, 2),
 
 		cell("Uptime", UDim2.new(1, -206, 0, 0), UDim2.new(0, 90, 1, 0), {

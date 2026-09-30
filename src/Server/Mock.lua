@@ -10,7 +10,8 @@ local library = {}
 
 local SERVERS_PER_PLACE = 14
 local MAX_PLAYERS = 32
-local REGIONS = { "US East", "US Central", "US West", "EU West", "EU Central", "Asia", "Oceania" }
+-- the game's own geolocation format
+local REGIONS = { "Ashburn - Virginia", "Chicago - Illinois", "Los Angeles - California", "London - England", "Frankfurt am Main - Hesse", "Singapore - Singapore", "Sydney - New South Wales" }
 
 local random = Random.new()
 local entries = {}
@@ -37,7 +38,12 @@ local function seed(placeId, count, version, kind)
 			entry.kind = kind
 			entry.hostId = HOSTS[(index - 1) % #HOSTS + 1]
 			entry.locked = index == 2
-			entry.settings = { FirstPersonOnly = index == 3, ZombiesEnabled = index ~= 4, LootEnabled = true }
+			entry.settings = {
+				FirstPersonOnly = index == 3 and "On" or "Off",
+				ZombiesEnabled = index == 4 and "Off" or "On",
+				LootEnabled = "On",
+				TimeOfDayFrozen = "Off",
+			}
 		end
 
 		table.insert(entries, entry)

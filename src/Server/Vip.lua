@@ -26,16 +26,19 @@ local library = {}
 
 -- game repo: src/Server/VIP Main.server.lua and freeroam:src/Server/Configs/Freeroam.lua
 local FREEROAM_SERVERS = "Freeroam Servers - 4" -- DataStore, key hostId: { AccessCode, ServerId, HostId, CreatedAt }
-local FREEROAM_CONFIGS = "Freeroam Configs - 4" -- MemoryStore, key hostId: { OwnerId, ServerLocked, Hosts, Bans, Config }
+-- MemoryStore, key hostId: { OwnerId, ServerLocked, Hosts, Bans, Config }. 60s TTL and
+-- only written when the host changes a setting, so usually there's no entry
+local FREEROAM_CONFIGS = "Freeroam Configs - 4"
 
--- freeroam settings worth a word on the row, shown when they differ from a normal server
+-- freeroam settings worth a word on the row, shown when they differ from a
+-- normal server. Freeroam's Config values are strings ("On"/"Off")
 local SETTING_TAGS = {
-	{ "FirstPersonOnly", true, "FIRST PERSON" },
-	{ "FreeCamEnabled", true, "FREECAM" },
-	{ "ZombiesEnabled", false, "NO ZOMBIES" },
-	{ "LootEnabled", false, "NO LOOT" },
-	{ "VehiclesEnabled", false, "NO VEHICLES" },
-	{ "RandomsEnabled", false, "NO RANDOMS" },
+	{ "FirstPersonOnly", "On", "FIRST PERSON" },
+	{ "FreeCamEnabled", "On", "FREECAM" },
+	{ "ZombiesEnabled", "Off", "NO ZOMBIES" },
+	{ "LootEnabled", "Off", "NO LOOT" },
+	{ "VehiclesEnabled", "Off", "NO VEHICLES" },
+	{ "RandomsEnabled", "Off", "NO RANDOMS" },
 }
 
 -- set a ShowVip attribute on ServerStorage in Studio to preview VIP rows with mock data
@@ -113,32 +116,37 @@ function library:Describe(kind, entry)
 	}
 end
 
--- true, or false and a status code. Reads the host's live lock and bans at
--- join time rather than trusting the directory, and fails closed
+-- true, or false and a status code. A pre-check to save a wasted teleport:
+-- the freeroam server enforces its lock and bans on arrival itself, so a
+-- stale answer here can't let anyone past them
 function library:Authorize(client, server)
 	configs = configs or memoryStores:GetHashMap(FREEROAM_CONFIGS)
 
+	-- the live config names bans and co-hosts, when there is one
 	local read, config = pcall(configs.GetAsync, configs, tostring(server.HostId))
 
 	if not read then
 		warn("Lobby couldn't read freeroam config for host", server.HostId, config)
-
-		return false, "failed"
 	end
 
 	if type(config) ~= "table" then
-		-- no live config means the host's server isn't running
-		return false, "closed"
+		config = nil
 	end
 
 	local userKey = tostring(client.UserId)
-	local isHost = client.UserId == server.HostId or (type(config.Hosts) == "table" and config.Hosts[userKey] == true)
+	local coHost = config and type(config.Hosts) == "table" and config.Hosts[userKey] == true
+	local isHost = client.UserId == server.HostId or coHost
+	local locked = server.Locked
 
-	if type(config.Bans) == "table" and config.Bans[userKey] then
+	if config and config.ServerLocked ~= nil then
+		locked = config.ServerLocked == true
+	end
+
+	if config and type(config.Bans) == "table" and config.Bans[userKey] then
 		return false, "banned"
 	end
 
-	if config.ServerLocked and not isHost then
+	if locked and not isHost then
 		return false, "locked"
 	end
 

@@ -146,6 +146,26 @@ local function readEntries()
 	return entries
 end
 
+-- the game sends "City - Region" (e.g. "Ashburn - Virginia"); the column only
+-- has room for the region, cut on a word boundary if it's still long
+local REGION_LENGTH = 18
+
+local function shortRegion(region)
+	if type(region) ~= "string" or region == "" then
+		return nil
+	end
+
+	region = region:match(" %- (.+)$") or region
+
+	if #region <= REGION_LENGTH then
+		return region
+	end
+
+	local cut = region:sub(1, REGION_LENGTH):match("^(.*%S)%s") or region:sub(1, REGION_LENGTH)
+
+	return cut
+end
+
 local function sortServers(a, b)
 	local aFull = a.Players >= a.Max
 	local bFull = b.Players >= b.Max
@@ -215,7 +235,7 @@ local function buildSnapshot(entries)
 			Players = players,
 			Max = maxPlayers,
 			StartedAt = tonumber(entry.startedAt) or os.time(),
-			Region = type(entry.region) == "string" and entry.region:sub(1, 24) or nil,
+			Region = shortRegion(entry.region),
 		}
 
 		if kind == "public" then
