@@ -1,0 +1,54 @@
+-- Fake directory entries for unpublished Studio, which has no MemoryStore and
+-- can't teleport. Same shape as what the game's browser beacon writes, so the
+-- real snapshot code runs on it. Never used outside Studio.
+
+local httpService = game:GetService("HttpService")
+
+local library = {}
+
+----
+
+local SERVERS_PER_PLACE = 14
+local MAX_PLAYERS = 32
+local REGIONS = { "US East", "US Central", "US West", "EU West", "EU Central", "Asia", "Oceania" }
+
+local random = Random.new()
+local entries = {}
+
+----
+
+local function seed(placeId, count, version)
+	for index = 1, count or SERVERS_PER_PLACE do
+		table.insert(entries, {
+			v = version,
+			placeId = placeId,
+			jobId = httpService:GenerateGUID(false):lower(),
+			-- one full server so the dimmed row style shows up
+			players = index == 1 and MAX_PLAYERS or random:NextInteger(0, MAX_PLAYERS - 1),
+			maxPlayers = MAX_PLAYERS,
+			startedAt = os.time() - random:NextInteger(60, 8 * 3600),
+			placeVersion = 1,
+			region = REGIONS[random:NextInteger(1, #REGIONS)],
+		})
+	end
+end
+
+----
+
+-- places: { { placeId, serverCount? } }; version matches the directory being faked
+function library:Read(places, version)
+	if #entries == 0 then
+		for _, place in places do
+			seed(place[1], place[2], version)
+		end
+	end
+
+	-- drift populations a little each poll so the list visibly updates
+	for _, entry in entries do
+		entry.players = math.clamp(entry.players + random:NextInteger(-2, 2), 0, entry.maxPlayers)
+	end
+
+	return entries
+end
+
+return library

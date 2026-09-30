@@ -17,7 +17,8 @@
 				"$className": "Folder",
 				"Directory": { "$className": "RemoteEvent" },
 				"Play": { "$className": "RemoteEvent" },
-				"Status": { "$className": "RemoteEvent" }
+				"Status": { "$className": "RemoteEvent" },
+				"Refresh": { "$className": "RemoteEvent" }
 			}
 		},
 
@@ -31,18 +32,12 @@
 			}
 		},
 
-		"StarterPlayer": {
-			"$className": "StarterPlayer",
+		"ReplicatedFirst": {
+			"$className": "ReplicatedFirst",
 			"$ignoreUnknownInstances": true,
 
-			"StarterPlayerScripts": {
-				"$className": "StarterPlayerScripts",
-				"$ignoreUnknownInstances": true,
-
-				"Lobby": {
-					"$className": "Folder",
-					"$path": "src/Client"
-				}
+			"Browser": {
+				"$path": "src/Client/Browser.client.lua"
 			}
 		},
 
