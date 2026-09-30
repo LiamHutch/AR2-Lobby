@@ -148,7 +148,7 @@ end
 
 -- the game sends "City - Region" (e.g. "Ashburn - Virginia"); the column only
 -- has room for the region, cut on a word boundary if it's still long
-local REGION_LENGTH = 18
+local REGION_LENGTH = 22
 
 local function shortRegion(region)
 	if type(region) ~= "string" or region == "" then

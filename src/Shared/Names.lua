@@ -41,13 +41,10 @@ function library:ForJob(jobId)
 	return ADJECTIVES[value % #ADJECTIVES + 1] .. " " .. NOUNS[(value // #ADJECTIVES) % #NOUNS + 1]
 end
 
--- first and last four characters, e.g. "9f2c…41ab"
+-- JobIds are GUIDs ("9f2c41ab-3e0d-…"); the first group is plenty to tell
+-- servers apart and to read out to someone
 function library:ShortId(jobId)
-	if #jobId <= 9 then
-		return jobId
-	end
-
-	return jobId:sub(1, 4) .. "…" .. jobId:sub(-4)
+	return jobId:match("^[^%-]+") or jobId:sub(1, 8)
 end
 
 return library

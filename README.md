@@ -7,8 +7,10 @@ Lobby and server browser for Apocalypse Rising 2. Press play, pick a map, and yo
 2. Open the lobby place in Studio and `rojo serve`.
 3. First time only: paste [tools/build-ui.lua](tools/build-ui.lua) into the command bar to build `ReplicatedFirst.Lobby`.
 
-## Adding a map
-Add an entry to [src/Shared/Maps.lua](src/Shared/Maps.lua) with its name, accent colour, flavour text, stats, platform support, up to 6 preview images, and every place id (prod and test) that runs it. The game place also needs the browser beacon, which it gets once its id is in the game's `isProdPlace` list.
+## Adding or editing a map
+Maps are configured **in the place**, no repo needed: in Studio, add or edit a Folder under `ServerStorage.Teleports.Active` (one per map, named with the map's title) and publish. The fields are listed at the top of [PlaceConfig.lua](src/Server/PlaceConfig.lua); it's the same layout the old dev hub used. Changes apply to lobby servers started after publishing.
+
+A prod place with no config uses [src/Shared/Maps.lua](src/Shared/Maps.lua); paste [tools/maps-to-folders.lua](tools/maps-to-folders.lua) into the command bar to turn it into folders. The game place also needs the browser beacon, which it gets once its id is in the game's `isProdPlace` list.
 
 ## How servers get listed
 Public prod game servers write a small heartbeat to MemoryStore (`BrowserDirectory1`). Each lobby server reads it every 15s and sends it to its players. Details, limits, and the UI contract are in [CLAUDE.md](CLAUDE.md).

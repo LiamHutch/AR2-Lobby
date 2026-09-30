@@ -1,4 +1,6 @@
--- One entry per playable map, in display order. Adding a map is adding an entry.
+-- Fallback map config for a prod lobby place that has no config folders of
+-- its own (see src/Server/PlaceConfig.lua; tools/maps-to-folders.lua turns
+-- this file into those folders). One entry per map, in display order.
 --
 --   Key        stable id, never shown; sent to the game in teleport data
 --   Name       title; the first word takes the accent colour
@@ -8,7 +10,10 @@
 --   Platforms  support per platform key from Platform.lua: "warn" shows a
 --              notice but still lets them in, "blocked" stops them joining.
 --              Unlisted platforms are fully supported
---   Images     preview art (up to 6), 1024px max; crossfades in the map view
+--   Images     landscape art (1024px max) for the map view's preview; crossfades
+--   CardImages portrait art for the map's card in the picker; falls back to Images
+--              Both take Image asset ids, not Decal ids (a decal's image id is its
+--              Texture; pasting a decal id into an ImageLabel in Studio converts it)
 --   Backdrop   optional tiny (~128px) copy of the art; Roblox's upscaling
 --              blurs it into the full-screen background
 --   PlaceIds   every place that runs this map, prod and test. The lobby uses
@@ -33,15 +38,15 @@ return {
 			PlayStation = "blocked", -- crashes on load
 			Mobile = "warn",
 		},
-		-- placeholders from the tourney map list in the game's
-		-- ServerScriptService.Classes.CustomMatches until the real set lands
 		Images = {
-			"rbxassetid://10076994076",
-			"rbxassetid://10076992315",
-			"rbxassetid://10076991949",
-			"rbxassetid://10076991419",
-			"rbxassetid://10076990569",
-			"rbxassetid://10076989899",
+			"rbxassetid://100458318643619", -- beta1 ashland
+			"rbxassetid://119965385609259", -- beta3 fairview
+			"rbxassetid://108090803277875", -- beta4 grain
+			"rbxassetid://119672357664079", -- beta7 magnolia
+		},
+		CardImages = {
+			"rbxassetid://90113538973109", -- beta5 beaufort
+			"rbxassetid://140317366312469", -- beta6 swamp
 		},
 		PlaceIds = {
 			863266079, -- Prod - Main
@@ -57,7 +62,8 @@ return {
 
 	{
 		Key = "Kin",
-		Name = "Kin",
+		-- Kin is a city on the Reimagined map; the picker calls it Kin Map
+		Name = "Kin Map",
 		Accent = "#5A9FD8",
 		Blurb = "The original Apocalypse Rising map, featuring a smaller playable area, streamlined terrain, and a classic visual style.",
 		Stats = {
@@ -67,7 +73,14 @@ return {
 			{ "DETAIL", "LOW" },
 		},
 		Platforms = {},
-		Images = {},
+		Images = {
+			"rbxassetid://99622524945108", -- reimagined3 ref
+			"rbxassetid://127111331315666", -- reimagined4 vernal
+		},
+		CardImages = {
+			"rbxassetid://83414551442195", -- reimagined1 kin
+			"rbxassetid://137147392099225", -- reimagined2 factory
+		},
 		PlaceIds = {},
 	},
 }

@@ -1,8 +1,13 @@
 -- Which lobby this place runs and which maps it offers.
 --
---   prod  the public server browser; every map in Shared/Maps.lua
---   test  the tester lobby in the old AR2 Development Hub's place; maps from
---         TestMaps.lua, filtered by group role, with optional passwords
+--   prod  the public server browser
+--   test  the tester lobby in the old AR2 Development Hub's place: reads the
+--         hub's directory, writes its grants
+--
+-- Maps come from the place's own config folders (PlaceConfig.lua), so they
+-- can be edited in Studio without the repo. A prod place with no config
+-- falls back to Shared/Maps.lua. Access, passwords and single-server locks
+-- work the same in both variants; the test maps just use them.
 --
 -- Clients only ever get PublicInfo for maps they're allowed to see.
 
@@ -31,19 +36,22 @@ end
 library.Variant = pickVariant()
 library.IsTest = library.Variant == "test"
 
-local testConfig = library.IsTest and require(script.Parent.TestMaps)
+local placeConfig = require(script.Parent.PlaceConfig):Load()
+
+if not placeConfig and library.IsTest then
+	warn("Test lobby has no ServerStorage.Teleports.Active config, so it has no maps")
+end
+
+-- group role -> access tier; only maps with an Access list use it
+local roleTiers = placeConfig and placeConfig.Tiers or { Group = 0, Roles = {} }
 
 library.Maps = {}
 library.ByKey = {}
 
-for _, source in (testConfig and testConfig.Maps or require(replicatedStorage.Shared.Maps)) do
-	local map = table.clone(source)
+local sourceMaps = placeConfig and placeConfig.Maps or (library.IsTest and {} or require(replicatedStorage.Shared.Maps))
 
-	for key, value in testConfig and testConfig.Defaults or {} do
-		if map[key] == nil then
-			map[key] = value
-		end
-	end
+for _, source in sourceMaps do
+	local map = table.clone(source)
 
 	table.insert(library.Maps, map)
 	library.ByKey[map.Key] = map
@@ -63,7 +71,7 @@ local updated = {}
 ----
 
 function library:Tier(client)
-	if not self.IsTest then
+	if roleTiers.Group == 0 then
 		return "Public"
 	end
 
@@ -71,8 +79,8 @@ function library:Tier(client)
 		return tiers[client]
 	end
 
-	local found, role = pcall(client.GetRoleInGroup, client, testConfig.Tiers.Group)
-	local tier = found and testConfig.Tiers.Roles[role] or "Public"
+	local found, role = pcall(client.GetRoleInGroup, client, roleTiers.Group)
+	local tier = found and roleTiers.Roles[role] or "Public"
 
 	-- a failed lookup isn't cached, so the next request tries again
 	if found then
@@ -93,29 +101,15 @@ function library:CanSee(client, map)
 end
 
 function library:NeedsPassword(map)
-	return map.Password == true
-end
-
--- nil when the place has no password stored for this map
-local function storedPassword(map)
-	local folder = serverStorage:FindFirstChild("LobbyPasswords")
-	local value = folder and folder:FindFirstChild(map.Key)
-
-	return value and value:IsA("StringValue") and value.Value ~= "" and value.Value or nil
+	return map.Secret ~= nil
 end
 
 -- true, or false and a status code for the client
 function library:CheckPassword(client, map, attempt)
-	if not self:NeedsPassword(map) then
-		return true
-	end
-
-	local password = storedPassword(map)
+	local password = map.Secret
 
 	if not password then
-		warn("Lobby map", map.Key, "wants a password but ServerStorage.LobbyPasswords." .. map.Key .. " isn't set")
-
-		return false, "unavailable"
+		return true
 	end
 
 	local now = os.clock()
@@ -156,6 +150,7 @@ function library:PublicInfo(map, live)
 		Stats = stats,
 		Platforms = map.Platforms,
 		Images = map.Images,
+		CardImages = map.CardImages,
 		Backdrop = map.Backdrop,
 		Password = self:NeedsPassword(map),
 		SingleServer = map.SingleServer == true,

@@ -5,6 +5,7 @@ local tweenService = game:GetService("TweenService")
 local userInputService = game:GetService("UserInputService")
 local guiService = game:GetService("GuiService")
 local contextActionService = game:GetService("ContextActionService")
+local soundService = game:GetService("SoundService")
 
 -- Runs from ReplicatedFirst next to the Lobby gui. Characters never load in the
 -- lobby, so StarterGui is never copied into PlayerGui; we move the gui ourselves.
@@ -37,12 +38,16 @@ local statusBox = stage.Status
 
 local STAGE = Vector2.new(1440, 810)
 
+-- screen pixels kept clear around the stage, on top of Roblox's top bar
+local MARGIN = 24
+
 local SLIDE = 6
 local CARD_CYCLE = 8
 local FADE = TweenInfo.new(1.2, Enum.EasingStyle.Sine)
 local PAN = TweenInfo.new(SLIDE + 1.5, Enum.EasingStyle.Linear)
 local QUICK = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local SPIN = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local AMBIENT_FADE = TweenInfo.new(8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 
 -- how far each preview shot drifts; images are 1.12x the frame, so keep under 0.06
 local DRIFTS = {
@@ -113,14 +118,7 @@ local function spaced(text)
 end
 
 local function titleText(map)
-	local first, rest = map.Name:match("^(%S+)%s*(.*)$")
-	local title = string.format('<font color="%s">%s</font>', map.Accent, spaced(first))
-
-	if rest ~= "" then
-		title ..= "   " .. spaced(rest)
-	end
-
-	return title
+	return spaced(map.Name)
 end
 
 -- text boxes hold the label and its drop-shadow copy; keep them in step
@@ -160,8 +158,50 @@ end
 
 ----
 
--- the game's button frames: highlight on hover, ignore clicks while disabled
-local function bindButton(frame, callback)
+-- ReplicatedStorage.Sounds is set up in the place (not Rojo): AmbientLoop and
+-- the game's Interface sounds. Anything missing just stays silent
+local sounds = replicatedStorage:FindFirstChild("Sounds")
+local interfaceSounds = sounds and sounds:FindFirstChild("Interface")
+
+-- one-shot interface sound, like the game's Interface:PlaySound
+local function playSound(name)
+	local source = interfaceSounds and interfaceSounds:FindFirstChild(name)
+
+	if not source then
+		return
+	end
+
+	local sound = source:Clone()
+	sound.Parent = soundService
+	sound.Ended:Once(function()
+		sound:Destroy()
+	end)
+	sound:Play()
+end
+
+-- a background drone so the lobby isn't silent; fades up to the volume it's
+-- set to in the place
+local function startAmbient()
+	local source = sounds and sounds:FindFirstChild("AmbientLoop")
+
+	if not source then
+		return
+	end
+
+	local ambient = source:Clone()
+	local volume = ambient.Volume
+
+	ambient.Volume = 0
+	ambient.Looped = true
+	ambient.Parent = soundService
+	ambient:Play()
+
+	tweenService:Create(ambient, AMBIENT_FADE, { Volume = volume }):Play()
+end
+
+-- the game's button frames: highlight on hover, click sound, ignore presses
+-- while disabled. Pass sound = false when the action plays its own
+local function bindButton(frame, callback, sound)
 	frame.Button.MouseEnter:Connect(function()
 		frame.HighlightBox.Visible = not frame:GetAttribute("Disabled")
 	end)
@@ -172,6 +212,10 @@ local function bindButton(frame, callback)
 
 	frame.Button.Activated:Connect(function()
 		if not frame:GetAttribute("Disabled") then
+			if sound ~= false then
+				playSound("Click")
+			end
+
 			callback()
 		end
 	end)
@@ -212,8 +256,8 @@ local function drawChips(bin, map)
 		chip.Name = entry.Key
 		chip.LayoutOrder = index
 		chip.Stroke.Color = color
-		-- the chip for the platform you're on stands out a little
-		chip.Stroke.Transparency = entry.Key == here and 0.15 or 0.7
+		-- only the chip for the platform you're on gets an outline
+		chip.Stroke.Transparency = entry.Key == here and 0.3 or 1
 
 		if entry.Icon ~= "" then
 			chip.Icon.Image = entry.Icon
@@ -257,13 +301,13 @@ local function refresh()
 	lastRefresh = os.clock()
 	remotes.Refresh:FireServer()
 
-	-- rotation isn't inherited, so spin the glyph and its shadow directly
+	-- an icon image spins itself; the drawn stand-in spins its ring
 	local icon = info.Buttons.Refresh.Icon
-	local spinning = icon:IsA("ImageLabel") and { icon } or { icon.Text, icon.Shadow }
+	local spinning = icon:IsA("ImageLabel") and icon or icon:FindFirstChild("Ring")
 
-	for _, object in spinning do
-		object.Rotation = 0
-		tweenService:Create(object, SPIN, { Rotation = 360 }):Play()
+	if spinning then
+		spinning.Rotation = 0
+		tweenService:Create(spinning, SPIN, { Rotation = 360 }):Play()
 	end
 end
 
@@ -320,6 +364,8 @@ local function makeRow(jobId)
 		if row:GetAttribute("Full") then
 			return
 		end
+
+		playSound("Click")
 
 		if selectedId == jobId then
 			play(openMap.Key, jobId)
@@ -439,8 +485,8 @@ local function drawSorts()
 		local on = mode == sortMode
 
 		chip.Label.TextTransparency = on and 0 or 0.5
-		chip.Stroke.Transparency = on and 0.4 or 0.8
-		chip.BackgroundTransparency = on and 0.15 or 0.6
+		chip.Stroke.Transparency = on and 0.35 or 0.8
+		chip.BackgroundTransparency = on and 0 or 0.2
 	end
 end
 
@@ -570,6 +616,7 @@ local function openMapView(map)
 	picker.Visible = false
 	mapView.Visible = true
 
+	playSound("MapOpen")
 	focus(info.Buttons.Play.Button)
 end
 
@@ -588,6 +635,7 @@ local function closeMapView()
 	mapView.Visible = false
 	picker.Visible = true
 
+	playSound("MapClose")
 	focus(card and card.Button)
 end
 
@@ -641,7 +689,10 @@ local function makeCard(map, index)
 
 	setText(card.Title, titleText(map))
 	drawChips(card.Platforms, map)
-	cycleArt(card, map.Images or {})
+
+	-- portrait art suits the card; landscape is the fallback
+	local cardArt = map.CardImages and #map.CardImages > 0 and map.CardImages or map.Images or {}
+	cycleArt(card, cardArt)
 
 	card.Button.MouseEnter:Connect(function()
 		card.HighlightBox.Visible = liveMaps[map.Key] == true
@@ -705,20 +756,31 @@ end
 
 ----
 
--- the gui is inset clear of Roblox's buttons; the stage (laid out at
--- 1440x810) scales to fit inside that, the background covers the whole screen
-local function fit()
-	local size = gui.AbsoluteSize
-	local camera = workspace.CurrentCamera
-	local background = gui.Background
+-- how much of the top of the screen Roblox's own buttons take
+local function topBarHeight()
+	local height = guiService:GetGuiInset().Y
+	local found, inset = pcall(function()
+		return guiService.TopbarInset
+	end)
 
-	if size.X > 0 and size.Y > 0 then
-		stage.Scale.Scale = math.min(size.X / STAGE.X, size.Y / STAGE.Y)
+	if found and inset then
+		height = math.max(height, inset.Max.Y)
 	end
 
-	if camera then
-		background.Position = UDim2.fromOffset(-gui.AbsolutePosition.X, -gui.AbsolutePosition.Y)
-		background.Size = UDim2.fromOffset(camera.ViewportSize.X, camera.ViewportSize.Y)
+	return height
+end
+
+-- the gui covers the whole screen so the background runs under the top bar;
+-- the stage (laid out at 1440x810) scales to fit below it, inside a margin
+local function fit()
+	local size = gui.AbsoluteSize
+	local top = topBarHeight()
+	local width = size.X - MARGIN * 2
+	local height = size.Y - top - MARGIN * 2
+
+	if width > 0 and height > 0 then
+		stage.Scale.Scale = math.min(width / STAGE.X, height / STAGE.Y)
+		stage.Position = UDim2.new(0.5, 0, 0.5, top / 2)
 	end
 end
 
@@ -727,19 +789,19 @@ for _, coreGui in { Enum.CoreGuiType.Backpack, Enum.CoreGuiType.Health, Enum.Cor
 end
 
 fit()
+startAmbient()
 gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
-gui:GetPropertyChangedSignal("AbsolutePosition"):Connect(fit)
-
-if workspace.CurrentCamera then
-	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)
-end
+pcall(function()
+	guiService:GetPropertyChangedSignal("TopbarInset"):Connect(fit)
+end)
 
 -- gamepad focus uses the game's highlight box instead of Roblox's default ring
 local selection = templates.Selection:Clone()
 selection.Visible = true
 playerGui.SelectionImageObject = selection
 
-bindButton(info.Buttons.Back, closeMapView)
+-- closing plays MapClose itself (gamepad B closes too)
+bindButton(info.Buttons.Back, closeMapView, false)
 bindButton(info.Buttons.Refresh, refresh)
 
 bindButton(info.Buttons.Play, function()
@@ -766,6 +828,7 @@ for chipName, mode in SORTS do
 	end)
 
 	chip.Button.Activated:Connect(function()
+		playSound("Click")
 		sortMode = mode
 		drawSorts()
 		drawServers()
