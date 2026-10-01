@@ -1170,11 +1170,33 @@ end)
 
 -- Controllers use Roblox's virtual cursor (StarterGui.VirtualCursorMode =
 -- Enabled in the place, like the game; scripts can't set it), which hovers
--- and clicks like a mouse. This ring only shows if someone uses classic
--- selection anyway
+-- and clicks like a mouse but also selects what it's over, drawing this ring
+-- (it lands on the hover highlight, so buttons look the same)
 local selection = templates.Selection:Clone()
 selection.Visible = true
+
+-- Roblox ignores a selection image's AnchorPoint, so the template's centred
+-- ring started at the button's centre; move it to the same spot from the
+-- top left
+local size, position, anchor = selection.Size, selection.Position, selection.AnchorPoint
+selection.AnchorPoint = Vector2.zero
+selection.Position = UDim2.new(
+	position.X.Scale - size.X.Scale * anchor.X,
+	position.X.Offset - size.X.Offset * anchor.X,
+	position.Y.Scale - size.Y.Scale * anchor.Y,
+	position.Y.Offset - size.Y.Offset * anchor.Y
+)
+
 playerGui.SelectionImageObject = selection
+
+-- the lists stay selectable so the stick scrolls them, but ringing a whole
+-- list boxed the screen edges whenever the cursor sat between cards
+local noRing = Instance.new("Frame")
+noRing.BackgroundTransparency = 1
+
+for _, list in { cardRow, serverList } do
+	list.SelectionImageObject = noRing
+end
 
 -- the lobby is all buttons, so a gamepad always drives the cursor: it's
 -- turned on whenever a pad is in use (or on console) and off, including
