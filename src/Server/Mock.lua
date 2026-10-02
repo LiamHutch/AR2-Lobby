@@ -22,8 +22,16 @@ library.Active = runService:IsStudio()
 
 local SERVERS_PER_PLACE = 14
 local MAX_PLAYERS = 32
--- the game's own geolocation format
-local REGIONS = { "Ashburn - Virginia", "Chicago - Illinois", "Los Angeles - California", "London - England", "Frankfurt am Main - Hesse", "Singapore - Singapore", "Sydney - New South Wales" }
+-- the game's own geolocation: region is "City - Region", location its parts
+local LOCATIONS = {
+	{ area = "US East", city = "Ashburn", state = "Virginia", country = "United States", countryCode = "US", continent = "North America" },
+	{ area = "US Central", city = "Chicago", state = "Illinois", country = "United States", countryCode = "US", continent = "North America" },
+	{ area = "US West", city = "Los Angeles", state = "California", country = "United States", countryCode = "US", continent = "North America" },
+	{ area = "Europe", city = "London", state = "England", country = "United Kingdom", countryCode = "GB", continent = "Europe" },
+	{ area = "Europe", city = "Frankfurt am Main", state = "Hesse", country = "Germany", countryCode = "DE", continent = "Europe" },
+	{ area = "Asia", city = "Singapore", state = "Singapore", country = "Singapore", countryCode = "SG", continent = "Asia" },
+	{ area = "Oceania", city = "Sydney", state = "New South Wales", country = "Australia", countryCode = "AU", continent = "Oceania" },
+}
 
 local random = Random.new()
 local entries = {}
@@ -44,8 +52,12 @@ local function seed(placeId, count, version, kind, pool)
 			startedAt = os.time() - random:NextInteger(60, 8 * 3600),
 			-- mostly the current build, the odd server still on the last one
 			placeVersion = index % 4 == 0 and 411 or 412,
-			region = REGIONS[random:NextInteger(1, #REGIONS)],
 		}
+
+		-- the odd server from an older build, with only the region string
+		local location = LOCATIONS[random:NextInteger(1, #LOCATIONS)]
+		entry.region = location.city .. " - " .. location.state
+		entry.location = index % 5 ~= 0 and location or nil
 
 		if pool then
 			entry.pool = pool.name

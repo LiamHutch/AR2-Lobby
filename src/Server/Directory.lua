@@ -17,7 +17,7 @@ local remotes = replicatedStorage.Remotes
 local library = {}
 
 -- [mapKey] = { Online = number, Servers = { server }, Pools = { [pool] = { server } } }
---   server: { Id, Kind, PlaceId, Players, Max, StartedAt, Region?, Version?, Pool? }
+--   server: { Id, Kind, PlaceId, Players, Max, StartedAt, Region?, Location?, Country?, Version?, Pool? }
 --           plus HostId, Host?, Locked, Tags for VIP kinds (see Vip.lua)
 -- Servers are the Any servers; Pools holds each platform-only pool's running
 -- servers (Pools.lua), for every pool the map has
@@ -215,6 +215,40 @@ local function shortRegion(region)
 	return cut
 end
 
+local function text(value)
+	return type(value) == "string" and value ~= "" and value or nil
+end
+
+-- newer game servers also send location = { area, city, state, country,
+-- countryCode, continent }. The column gets "US East · Ashburn", or just the
+-- area if that's too long; the footer gets the whole thing. Older servers
+-- only have region, and fall back to shortRegion
+local function describeLocation(entry)
+	local location = type(entry.location) == "table" and entry.location or {}
+	local area = text(location.area)
+
+	if not area then
+		return shortRegion(entry.region), nil, nil
+	end
+
+	local city = text(location.city)
+	local column = city and (area .. " · " .. city) or area
+
+	if utf8.len(column) > REGION_LENGTH then
+		column = area
+	end
+
+	local parts = {}
+
+	for _, part in { city, text(location.state), text(location.countryCode) } do
+		table.insert(parts, part)
+	end
+
+	local full = #parts > 0 and (area .. " · " .. table.concat(parts, ", ")) or area
+
+	return column, full, text(location.country)
+end
+
 local function sortServers(a, b)
 	local aFull = a.Players >= a.Max
 	local bFull = b.Players >= b.Max
@@ -312,10 +346,12 @@ local function buildSnapshot(entries)
 			Players = players,
 			Max = maxPlayers,
 			StartedAt = tonumber(entry.startedAt) or os.time(),
-			Region = shortRegion(entry.region),
+			-- Region, Location and Country, see describeLocation
 			-- game.PlaceVersion; the test directory's Hub Beacon doesn't send it
 			Version = tonumber(entry.placeVersion),
 		}
+
+		server.Region, server.Location, server.Country = describeLocation(entry)
 
 		local bucket = snapshot[info.Map]
 		local list = bucket.Servers

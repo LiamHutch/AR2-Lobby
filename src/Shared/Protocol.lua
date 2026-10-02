@@ -31,6 +31,10 @@
 --     startedAt = number,     -- unix time the server booted
 --     placeVersion = number,  -- game.PlaceVersion, spots outdated servers
 --     region = string?,       -- the game's "City - Region", e.g. "Ashburn - Virginia"
+--     location = table?,      -- its parts, newer game builds: { area, city,
+--                             -- state, country, countryCode, continent }; area
+--                             -- is "US East", "US Central", "US West", "Canada"
+--                             -- or the continent
 --     kind = string?,         -- see KINDS; missing means "public"
 --     privateServerId = string?, -- test directory: every server (single-server
 --                             -- maps list just their shared one). Prod: pool

@@ -417,12 +417,14 @@ local function sortServers(servers)
 	end)
 end
 
--- a search matches the server's name, id, region or VIP host
+-- a search matches the server's name, id, region (any part of it) or VIP host
 local function matches(server, query)
 	local fields = {
 		names:ForJob(server.Id),
 		server.Id,
 		server.Region or "",
+		server.Location or "",
+		server.Country or "",
 		server.Host or "",
 	}
 
@@ -599,7 +601,7 @@ function drawServers()
 		setText(footer.ServerName, names:ForJob(picked.Id):upper())
 		local meta = {
 			idLine(picked),
-			picked.Region or "—",
+			picked.Location or picked.Region or "—",
 			"up " .. formatUptime(math.max(0, now - picked.StartedAt)),
 			string.format("%d / %d", picked.Players, picked.Max),
 		}
