@@ -1328,6 +1328,17 @@ end
 drawForwarding()
 replicatedStorage:GetAttributeChangedSignal("VipForward"):Connect(drawForwarding)
 
+-- VIP is PC and console only, so a forwarding server waits to hear what
+-- this client is on before sending it anywhere
+local function reportPlatform()
+	if forwarding() then
+		remotes.Platform:FireServer(here)
+	end
+end
+
+reportPlatform()
+replicatedStorage:GetAttributeChangedSignal("VipForward"):Connect(reportPlatform)
+
 remotes.Status.OnClientEvent:Connect(function(code, title)
 	setStatus(code)
 

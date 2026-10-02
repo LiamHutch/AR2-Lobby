@@ -13,6 +13,10 @@
 -- DataStores are server-only, so the game can trust VIP_HOSTS_STORE for who
 -- hosts a server. It must never take the host from TeleportData. The access
 -- code never leaves the server, so the forward is the only way in.
+--
+-- VIP is PC and console only. Mobile players are sent on to a public lobby
+-- server instead, where they can pick a map as usual. Only the client knows
+-- what it's on, so it reports its platform and the forward waits for it.
 
 local playersService = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,6 +26,7 @@ local teleportService = game:GetService("TeleportService")
 local runService = game:GetService("RunService")
 
 local protocol = require(replicatedStorage.Shared.Protocol)
+local platform = require(replicatedStorage.Shared.Platform)
 local catalog = require(script.Parent.Catalog)
 
 local remotes = replicatedStorage.Remotes
@@ -33,11 +38,24 @@ local library = {}
 local SETUP_TRIES = 4
 local TELEPORT_TRIES = 3
 local RETRY_WAIT = 15
+-- how long to wait for a client to say what it's on before treating it as PC,
+-- so a slow load still gets forwarded
+local REPORT_WAIT = 20
+-- long enough to read the notice before the teleport screen covers it
+local NOTICE_WAIT = 2
+
+-- Platform.lua keys that don't get VIP servers
+local NOT_FORWARDED = {
+	Mobile = true,
+}
 
 ----
 
 -- the host's reserved server: { accessCode, privateServerId, ... }, once found
 local record = nil
+
+-- client -> the Platform.lua key it reported
+local devices = {}
 
 local function valid(entry, hostId, placeId)
 	return type(entry) == "table"
@@ -83,6 +101,40 @@ local function resolve(hostId, placeId)
 	})
 
 	return entry
+end
+
+-- what the client said it's on, once it has; PC if it never does
+local function deviceOf(client)
+	local deadline = os.clock() + REPORT_WAIT
+
+	while not devices[client] and client.Parent and os.clock() < deadline do
+		task.wait(0.25)
+	end
+
+	return devices[client] or "PC"
+end
+
+-- no options matchmakes into one of the lobby's public servers
+local function redirect(client)
+	remotes.Status:FireClient(client, "unsupported")
+	task.wait(NOTICE_WAIT)
+
+	while client.Parent do
+		for attempt = 1, TELEPORT_TRIES do
+			local worked, why = pcall(teleportService.TeleportAsync, teleportService, game.PlaceId, { client })
+
+			if worked then
+				return
+			end
+
+			warn("VIP redirect attempt", attempt, "failed:", why)
+			task.wait(attempt * 2)
+		end
+
+		remotes.Status:FireClient(client, "failed")
+		task.wait(RETRY_WAIT)
+		remotes.Status:FireClient(client, "unsupported")
+	end
 end
 
 local function forward(client, hostId, placeId, title)
@@ -151,8 +203,19 @@ function library:Start(directory)
 		return false
 	end
 
-	-- clients hide the browser straight away
+	-- clients hide the browser straight away, and report their platform
+	-- when they see this
 	replicatedStorage:SetAttribute("VipForward", true)
+
+	remotes.Platform.OnServerEvent:Connect(function(client, device)
+		if type(device) == "string" and platform.ByKey[device] then
+			devices[client] = device
+		end
+	end)
+
+	playersService.PlayerRemoving:Connect(function(client)
+		devices[client] = nil
+	end)
 
 	directory:Resolve()
 
@@ -185,12 +248,18 @@ function library:Start(directory)
 
 	local title = map.Title
 
-	playersService.PlayerAdded:Connect(function(client)
-		forward(client, hostId, placeId, title)
-	end)
+	local function send(client)
+		if NOT_FORWARDED[deviceOf(client)] then
+			redirect(client)
+		else
+			forward(client, hostId, placeId, title)
+		end
+	end
+
+	playersService.PlayerAdded:Connect(send)
 
 	for _, client in playersService:GetPlayers() do
-		task.spawn(forward, client, hostId, placeId, title)
+		task.spawn(send, client)
 	end
 
 	teleportService.TeleportInitFailed:Connect(function(client)
@@ -199,7 +268,7 @@ function library:Start(directory)
 
 		task.delay(RETRY_WAIT, function()
 			if client.Parent then
-				forward(client, hostId, placeId, title)
+				send(client)
 			end
 		end)
 	end)

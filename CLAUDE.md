@@ -25,7 +25,7 @@ src/Server/  → ServerScriptService.Lobby                  Main.server.lua, Cat
 src/Client/Browser/ → ReplicatedFirst.Browser             init.client.lua (moves the gui into PlayerGui, binds it), Slideshow.lua (map art), Loading.lua (teleport screen)
 tools/build-ui.lua                                        command-bar script that builds ReplicatedFirst.Lobby
 ```
-Remotes (`ReplicatedStorage.Remotes.Directory/Play/Status`) and `Players.CharacterAutoLoads = false` are declared in [default.project.json](default.project.json).
+Remotes (`ReplicatedStorage.Remotes.Directory/Play/Status/Platform`) and `Players.CharacterAutoLoads = false` are declared in [default.project.json](default.project.json).
 
 The lobby is **UI only**: the Workspace is empty on purpose (just Camera and Terrain), and no one ever gets a character. `CharacterAutoLoads` is off, and [Main.server.lua](src/Server/Main.server.lua) removes any character that appears anyway, so servers only do lobby work.
 
@@ -107,6 +107,7 @@ The lobby place (863266079) used to be the game's Prod - Main, so hosts' paid VI
 - A reserved server has no `PrivateServerOwnerId`, so the lobby records the host in lobby-owned DataStores: `LobbyVipHosts1` (key = reserved PrivateServerId → `{ v, hostId, placeId, createdAt }`, what the game reads to learn its host) and `LobbyVipServers1` (key = `"<placeId>:<hostId>"` → the access code and ids). Both are rewritten on each VIP boot so they self-heal.
 - The access code never reaches a client, so the forward is the only way into a host's server; Roblox already limits who can join the paid VIP server. TeleportData `{ source, v, kind = "vip", hostId }` is informational: **the game must take the host from `LobbyVipHosts1`, never TeleportData.**
 - The game side is on branch `kinvip` (`globals.getVIPHost()` in the Kin build). It reads `LobbyVipHosts1` **once at boot and caches it**, so the lobby must write the record before the first teleport and never delete it; a server that boots before its record exists runs non-VIP until it shuts down. It only accepts `v == Protocol.VIP_VERSION` (1) and `placeId == game.PlaceId`: change the record's shape on both sides together.
+- VIP is **PC and console only**. A forwarding client reports its platform over `Remotes.Platform` (only while `VipForward` is set), and the server waits up to 20s for it (no report counts as PC). Mobile players get the `unsupported` notice and are teleported to a public lobby server instead (`TeleportAsync` to the lobby place with no options). Like every platform check here, a lying client gets through.
 - If setup fails (no Kin place in the universe, DataStore errors after retries) the server falls back to the normal browser. Clients hide the browser while the `VipForward` attribute on ReplicatedStorage is true.
 - Studio: a `SimulateVipHost` attribute (a UserId) on ServerStorage fakes a VIP server; unpublished Studio can't reach DataStores, so it falls back to the browser after the retries.
 
