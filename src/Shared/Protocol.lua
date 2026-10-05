@@ -128,6 +128,9 @@ return {
 	-- tourney lobby and free roam server from the lobby. Each host's config is
 	-- lobby-owned (Shared/Private.lua has the shape):
 	--   PRIVATE_STORE  DataStore, key "<kind>:<userId>" -> { v = PRIVATE_VERSION, ... }
+	-- The freeroam build reads its host's record at boot and writes settings
+	-- and bans back (game: HubProtocol.PRIVATE_STORE); never change the shape
+	-- on one side alone
 	PRIVATE_STORE = "PrivateConfigs1",
 	PRIVATE_VERSION = 1,
 	-- seconds between re-reads of a hosted free roam server's live data
@@ -148,9 +151,8 @@ return {
 	--   FREEROAM_SERVERS_STORE  DataStore, key = hostId -> { AccessCode, ServerId,
 	--                           HostId, CreatedAt }: the host's permanent reserved
 	--                           server, which the game checks on arrival
-	--   FREEROAM_CONFIGS_STORE  DataStore + MemoryStore hash map (FREEROAM_CONFIG_TTL),
-	--                           key = hostId -> the game's config shape, read by
-	--                           the free roam server at boot
+	--   FREEROAM_CONFIGS_STORE  DataStore, key = hostId -> the old VIP lobby's
+	--                           config shape; read once to seed a host's record
 	--   FREEROAM_LOBBIES_MAP    MemoryStore hash map, key = hostId -> live data a
 	--                           running free roam server writes every 15s
 	TOURNEY_HANDOFF_MAP = "Tourney Match Handoff",
@@ -160,8 +162,12 @@ return {
 	TOURNEY_LEGACY_STORE = "VIP Match Configs 3",
 	FREEROAM_SERVERS_STORE = "Freeroam Servers - 4",
 	FREEROAM_CONFIGS_STORE = "Freeroam Configs - 4",
-	FREEROAM_CONFIG_TTL = 60,
 	FREEROAM_LOBBIES_MAP = "Freeroam Lobbies - 4",
+
+	-- the game's Return To Lobby button sends players here with
+	-- { source = GAME_SOURCE, v = 1, placeId, mode? }; mode names the page to
+	-- open on arrival ("Tourney" / "Freeroam"). Game: HubProtocol.GAME_SOURCE
+	GAME_SOURCE = "AR2Game",
 
 	-- the test lobby replaces the AR2 Development Hub in its place and keeps
 	-- the hub's names, so test servers' Hub Beacon and join lock work unchanged

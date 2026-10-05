@@ -18,6 +18,12 @@ playerGui.ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
 local gui = script.Parent:WaitForChild("Lobby")
 gui.Parent = playerGui
 
+local loading = require(script.Loading)
+
+-- a game's Return To Lobby arrives under its own loading screen; it stays up
+-- until the lobby has drawn, so the trip reads as one load
+loading.Adopt(playerGui, gui)
+
 -- ReplicatedFirst runs before the rest of the game has replicated
 if not game:IsLoaded() then
 	game.Loaded:Wait()
@@ -26,7 +32,6 @@ end
 local names = require(replicatedStorage.Shared.Names)
 local platform = require(replicatedStorage.Shared.Platform)
 local slideshow = require(script.Slideshow)
-local loading = require(script.Loading)
 local privateModule = require(script.Private)
 
 local remotes = replicatedStorage.Remotes
@@ -1121,6 +1126,9 @@ end
 fit()
 centreCards()
 startAmbient()
+
+-- the lobby is drawn; a carried-in loading screen can go
+loading.Settle()
 gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 gui:GetPropertyChangedSignal("AbsolutePosition"):Connect(fit)
 cardRow:FindFirstChildOfClass("UIListLayout"):GetPropertyChangedSignal("AbsoluteContentSize"):Connect(centreCards)

@@ -137,6 +137,13 @@ local function legacyHandoff(self, accessCode, serverId, placeId)
 		labels[key] = private:Label(MODE.SettingsByKey[key], value)
 	end
 
+	-- the round log names maps by their display names
+	local mapNames = {}
+
+	for _, map in MODE.Maps do
+		mapNames[map.Name] = map.DisplayName
+	end
+
 	local rosters = {}
 
 	for index, rosterName in { "Team 1", "Team 2", "Spectators" } do
@@ -176,6 +183,7 @@ local function legacyHandoff(self, accessCode, serverId, placeId)
 		TeamSize = settings.teamSize,
 		TeamColors = { private.TeamColors[config.teams[1].color]:ToHex(), private.TeamColors[config.teams[2].color]:ToHex() },
 		Settings = table.clone(settings),
+		MapNames = mapNames,
 	}
 end
 

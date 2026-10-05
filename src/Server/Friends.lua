@@ -231,16 +231,25 @@ function library:Follow(client, userId)
 	teleports:SendPrivate(client, entry.PlaceId, options, row.Title)
 end
 
--- a lobby arrival sent by a friend's JOIN: the friend to open on landing
-function library:FollowedFrom(client)
+-- what a lobby arrival should open: a friend whose JOIN sent them (followId),
+-- or the page for the game mode they came back from (mode); nil for neither
+function library:ArrivedFor(client)
 	local worked, data = pcall(function()
 		local joinData = client:GetJoinData()
 
 		return joinData and joinData.TeleportData
 	end)
 
-	if worked and type(data) == "table" and data.source == protocol.SOURCE and tonumber(data.followId) then
-		return tonumber(data.followId)
+	if not worked or type(data) ~= "table" then
+		return nil
+	end
+
+	if data.source == protocol.SOURCE and tonumber(data.followId) then
+		return { followId = tonumber(data.followId) }
+	end
+
+	if data.source == protocol.GAME_SOURCE and private.ByKey[data.mode] then
+		return { mode = data.mode }
 	end
 
 	return nil

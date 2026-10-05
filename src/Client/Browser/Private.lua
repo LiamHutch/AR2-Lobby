@@ -1377,6 +1377,13 @@ return function(context)
 				drawList()
 				drawInfo()
 			end
+		elseif message == "open" then
+			-- back from a game mode: its page
+			local key = ...
+
+			if not openMode and (private.ByKey[key] or CLIENT_MODES[key]) then
+				context.openMode(key)
+			end
 		elseif message == "follow" then
 			-- a friend's JOIN sent us here: open their lobby once it's listed
 			pendingFollow = ...

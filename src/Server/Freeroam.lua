@@ -2,13 +2,12 @@
 -- Free Roam place, configured and joined from the lobby. One object per host,
 -- made and driven by Sessions.lua.
 --
--- The host's config is the lobby's own (Shared/Private.lua). The free roam
--- server still reads the old VIP lobby's config record at boot
--- (FREEROAM_CONFIGS_STORE), so every change is also written there in that
--- shape by `writeLegacy`; once the freeroam build reads the lobby's config
--- directly, that goes. The host's reserved server record
--- (FREEROAM_SERVERS_STORE) stays: the game checks it on arrival to know whose
--- server it is.
+-- The host's config is the lobby's own (Shared/Private.lua); the free roam
+-- server reads it at boot and writes its in-game lock and ban changes back
+-- (settings and bans only). A host from before the lobby owned the config is
+-- seeded once from the old VIP lobby's record (FREEROAM_CONFIGS_STORE). The
+-- host's reserved server record (FREEROAM_SERVERS_STORE) stays: the game
+-- checks it on arrival to know whose server it is.
 
 local playersService = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -30,14 +29,11 @@ class.__index = class
 
 local MODE = private.ByKey.Freeroam
 local RECORD_TRIES = 3
-local LEGACY_WRITE_GAP = 6
-local LEGACY_MAP_GAP = 1
 
 local offline = runService:IsStudio() and game.GameId == 0
 
 local servers = not offline and dataStoreService:GetDataStore(protocol.FREEROAM_SERVERS_STORE)
 local legacyStore = not offline and dataStoreService:GetDataStore(protocol.FREEROAM_CONFIGS_STORE)
-local legacyMap = not offline and memoryStores:GetHashMap(protocol.FREEROAM_CONFIGS_STORE)
 local lobbies = not offline and memoryStores:GetHashMap(protocol.FREEROAM_LOBBIES_MAP)
 local tickets = not offline and memoryStores:GetHashMap(protocol.TICKETS_MAP)
 
@@ -68,9 +64,7 @@ local function sanitizeConfig(raw)
 	return config
 end
 
--- the game's config record, from the lobby's: what the free roam server
--- reads at boot (freeroam: Configs/Freeroam.lua). Values are its "On"/"Off"
--- strings and capitalised times
+-- the old VIP lobby's config keys and the lobby's, for the one-time seed
 local LEGACY_KEYS = {
 	{ "firstPerson", "FirstPersonOnly" },
 	{ "statsDegrade", "StatsDegrade" },
@@ -80,25 +74,6 @@ local LEGACY_KEYS = {
 	{ "randoms", "RandomsEnabled" },
 	{ "loot", "LootEnabled" },
 }
-
-local function toLegacy(hostId, config)
-	local settings = config.settings
-	local record = {
-		OwnerId = hostId,
-		ServerLocked = settings.locked == true,
-		Hosts = {},
-		Bans = table.clone(config.bans),
-		Config = {
-			TimeOfDayFrozen = settings.timeOfDay == "off" and "Off" or private:Label(MODE.SettingsByKey.timeOfDay, settings.timeOfDay),
-		},
-	}
-
-	for _, pair in LEGACY_KEYS do
-		record.Config[pair[2]] = settings[pair[1]] and "On" or "Off"
-	end
-
-	return record
-end
 
 local function fromLegacy(record)
 	if type(record) ~= "table" then
@@ -179,8 +154,6 @@ function class.new(host, saved, sync, placeId)
 	self.Live = nil
 
 	self.sync = sync
-	self.legacyDirty = false
-	self.legacyWrote = -math.huge
 
 	live[self] = true
 
@@ -258,46 +231,8 @@ function class:loadRecord()
 	self.sync("state")
 end
 
--- mirrors the config into the game's stores (see the top of the file)
-function class:writeLegacy()
-	if offline then
-		return
-	end
-
-	local key = tostring(self.HostId)
-
-	-- the MemoryStore copy a moment after the last change, the DataStore copy
-	-- at the per-key write gap; a host clicking through options costs one of each
-	if self.legacyDirty then
-		return
-	end
-
-	self.legacyDirty = true
-
-	task.spawn(function()
-		task.wait(LEGACY_MAP_GAP)
-		pcall(legacyMap.SetAsync, legacyMap, key, toLegacy(self.HostId, self.Config), protocol.FREEROAM_CONFIG_TTL)
-
-		local wait = LEGACY_WRITE_GAP - (os.clock() - self.legacyWrote)
-
-		if wait > 0 then
-			task.wait(wait)
-		end
-
-		self.legacyDirty = false
-		self.legacyWrote = os.clock()
-
-		local worked, why = pcall(legacyStore.SetAsync, legacyStore, key, toLegacy(self.HostId, self.Config))
-
-		if not worked then
-			warn("Lobby couldn't write the free roam config for host", self.HostId, why)
-		end
-	end)
-end
-
 function class:Save()
 	store:Save("freeroam", self.HostId, self.Config)
-	self:writeLegacy()
 end
 
 ----

@@ -13,8 +13,10 @@
 --   Platforms  support per platform key, like a map's (Platform.lua)
 --   Icon       vector art for the tile
 --   Images     the mode view's preview slideshow (1024x576)
---   PlaceIds   every place that runs this mode, prod and test; the lobby uses
---              whichever one is in its own universe
+--   PlaceIds   every place that runs this mode, in the order to prefer them:
+--              the lobby uses the first one in its own universe. The test
+--              universe has both a Test - Prod and a Development copy, and the
+--              test lobby should send players to the Test - Prod one
 --   Heading    the session list's heading; Empty its empty text; Primary the
 --              main button's label
 --   Settings   ordered list of { Key, Label, Default, Options = { { value, label } } }
@@ -107,6 +109,7 @@ library.Modes = {
 		},
 		PlaceIds = {
 			10077968348, -- Prod - VIP Tourney
+			12123100380, -- Test - Prod VIP Tourney
 			10075831055, -- Dev - VIP Tourney
 		},
 		Heading = "Lobbies",
@@ -188,6 +191,7 @@ library.Modes = {
 		},
 		PlaceIds = {
 			105446216022659, -- Prod - VIP Freeroam
+			73731901834889, -- Test - Prod VIP Freeroam
 			107047742607799, -- Dev - VIP Freeroam
 		},
 		Heading = "Servers",

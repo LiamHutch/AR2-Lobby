@@ -18,7 +18,8 @@
 --                        answered with where they are (Friends.lua)
 --   "follow", userId     go to that friend's server
 --   "ready"              the client is up: told who to open if a friend's
---                        JOIN sent them here
+--                        JOIN sent them here, or which page if the game's
+--                        Return To Lobby did
 --
 -- server -> client:
 --   "list", key, rows, own      the sessions this player may see (Row, plus
@@ -31,6 +32,7 @@
 --                               have a place in this universe
 --   "friends", rows             Friends.lua rows
 --   "follow", userId            open this friend's session (they sent you)
+--   "open", key                 open this mode's page (back from that game mode)
 --
 -- Visibility: a private session is listed only to its host and the players
 -- already in it; friends to the host's friends; public to everyone. The
@@ -464,10 +466,16 @@ function handlers.follow(client, userId)
 end
 
 function handlers.ready(client)
-	local followId = friendsLibrary:FollowedFrom(client)
+	local arrival = friendsLibrary:ArrivedFor(client)
 
-	if followId and client.Parent then
-		remote:FireClient(client, "follow", followId)
+	if not arrival or not client.Parent then
+		return
+	end
+
+	if arrival.followId then
+		remote:FireClient(client, "follow", arrival.followId)
+	elseif arrival.mode then
+		remote:FireClient(client, "open", arrival.mode)
 	end
 end
 

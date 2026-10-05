@@ -7,6 +7,10 @@
 --   (GetArrivingTeleportGui) and swaps in its identical own
 --
 -- Nothing inside a teleport gui runs, so it's set up here before it goes.
+--
+-- The other way round, the game's Return To Lobby sends its own copy of the
+-- screen with the teleport; Adopt keeps it up over the lobby until Settle
+-- fades it out once the lobby has drawn.
 
 local teleportService = game:GetService("TeleportService")
 local tweenService = game:GetService("TweenService")
@@ -51,6 +55,54 @@ local function label(title)
 end
 
 ----
+
+-- the screen a game teleport arrived with, kept up until Settle; nil for a
+-- cold start
+local arrived = nil
+
+function library.Adopt(gui, above)
+	local screen = teleportService:GetArrivingTeleportGui()
+
+	if screen then
+		screen.DisplayOrder = above.DisplayOrder + 1
+		screen.Parent = gui
+		arrived = screen
+	end
+
+	return screen ~= nil
+end
+
+function library.Settle()
+	local screen = arrived
+	arrived = nil
+
+	if not screen then
+		return
+	end
+
+	local frame = screen:FindFirstChild("LoadingGui")
+
+	if not frame then
+		screen:Destroy()
+
+		return
+	end
+
+	local group = Instance.new("CanvasGroup")
+	group.Name = "Fade"
+	group.Size = UDim2.fromScale(1, 1)
+	group.BackgroundTransparency = 1
+	group.Parent = screen
+	frame.Parent = group
+
+	local tween = tweenService:Create(group, FADE, { GroupTransparency = 1 })
+
+	tween.Completed:Connect(function()
+		screen:Destroy()
+	end)
+
+	tween:Play()
+end
 
 function library.Init(source, gui)
 	template = source
