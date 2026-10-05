@@ -225,7 +225,9 @@ end
 -- only have region, and fall back to shortRegion
 local function describeLocation(entry)
 	local location = type(entry.location) == "table" and entry.location or {}
-	local area = text(location.area)
+	-- the game's area is its continent outside the US and Canada, and is
+	-- missing if ip-api left the continent out; the country is the next best
+	local area = text(location.area) or text(location.continent) or text(location.country)
 
 	if not area then
 		return shortRegion(entry.region), nil, nil
