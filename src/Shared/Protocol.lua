@@ -149,8 +149,12 @@ return {
 	--   TOURNEY_LEGACY_STORE    the old VIP lobby's saved match configs, read
 	--                           once to seed a host's lobby config
 	--   FREEROAM_SERVERS_STORE  DataStore, key = hostId -> { AccessCode, ServerId,
-	--                           HostId, CreatedAt }: the host's permanent reserved
-	--                           server, which the game checks on arrival
+	--                           HostId, PlaceId, CreatedAt }: the host's permanent
+	--                           reserved server, which the game checks on
+	--                           arrival. A code only works on the place it was
+	--                           reserved on, so a record for another place
+	--                           (an old VIP lobby's, without PlaceId, off prod)
+	--                           is replaced
 	--   FREEROAM_CONFIGS_STORE  DataStore, key = hostId -> the old VIP lobby's
 	--                           config shape; read once to seed a host's record
 	--   FREEROAM_LOBBIES_MAP    MemoryStore hash map, key = hostId -> live data a

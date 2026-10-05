@@ -176,9 +176,25 @@ end
 
 ----
 
--- the host's permanent reserved server, reserved on first use. The free roam
--- server trusts this record for who its host is, so it's never overwritten
--- once it exists
+-- a record is only good for the place its access code was reserved on. The
+-- old VIP lobby's records carry no PlaceId: on prod they were reserved on the
+-- prod place, elsewhere on the Development place, so only the prod lobby
+-- trusts one
+local function recordFor(record, placeId)
+	if type(record) ~= "table" or type(record.AccessCode) ~= "string" or type(record.ServerId) ~= "string" then
+		return false
+	end
+
+	if record.PlaceId == nil then
+		return placeId == MODE.PlaceIds[1]
+	end
+
+	return record.PlaceId == placeId
+end
+
+-- the host's permanent reserved server on this lobby's free roam place,
+-- reserved on first use. The free roam server trusts this record for who
+-- its host is, so it's only replaced for a server on another place
 function class:loadRecord()
 	if not self.PlaceId then
 		self.Broken = true
@@ -200,7 +216,7 @@ function class:loadRecord()
 		local worked, record = pcall(function()
 			local existing = servers:GetAsync(key)
 
-			if type(existing) == "table" and type(existing.AccessCode) == "string" then
+			if recordFor(existing, self.PlaceId) then
 				return existing
 			end
 
@@ -209,12 +225,13 @@ function class:loadRecord()
 				AccessCode = code,
 				ServerId = serverId,
 				HostId = self.HostId,
+				PlaceId = self.PlaceId,
 				CreatedAt = os.time(),
 			}
 
 			-- another lobby server may have reserved one meanwhile; theirs stays
 			return servers:UpdateAsync(key, function(old)
-				if type(old) == "table" and type(old.AccessCode) == "string" then
+				if recordFor(old, self.PlaceId) then
 					return old
 				end
 
