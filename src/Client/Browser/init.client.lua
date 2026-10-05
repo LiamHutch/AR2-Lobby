@@ -460,20 +460,15 @@ local function makeRow(jobId)
 		row.HighlightBox.Visible = selectedId == jobId
 	end)
 
-	-- first press selects, pressing the selected row again joins it
+	-- a press selects the row; only Join joins
 	row.Activated:Connect(function()
-		if row:GetAttribute("Full") then
+		if row:GetAttribute("Full") or selectedId == jobId then
 			return
 		end
 
 		playSound("Click")
-
-		if selectedId == jobId then
-			play(openMap.Key, jobId)
-		else
-			selectedId = jobId
-			drawServers()
-		end
+		selectedId = jobId
+		drawServers()
 	end)
 
 	row.Parent = serverList

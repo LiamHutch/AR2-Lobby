@@ -488,20 +488,15 @@ return function(context)
 			row.HighlightBox.Visible = selectedHostId == id
 		end)
 
-		-- first press selects, pressing the selected row again opens or joins
+		-- a press selects the row; only the footer button opens or joins
 		row.Activated:Connect(function()
-			if row:GetAttribute("Full") then
+			if row:GetAttribute("Full") or selectedHostId == id then
 				return
 			end
 
 			playSound("Click")
-
-			if selectedHostId == id then
-				library.JoinSelected()
-			else
-				selectedHostId = id
-				drawList()
-			end
+			selectedHostId = id
+			drawList()
 		end)
 
 		row.Parent = lobbyList
