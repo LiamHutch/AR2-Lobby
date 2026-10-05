@@ -579,7 +579,7 @@ local function buildPicker()
 
 		edgeFade({
 			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, 0, 0.5, 20),
+			Position = UDim2.new(0, 0, 0.5, -10),
 			Size = UDim2.new(1, 0, 0, 560),
 		}, make("ScrollingFrame", {
 			Name = "Maps",
@@ -607,6 +607,20 @@ local function buildPicker()
 				PaddingRight = UDim.new(0, 64),
 			}),
 		})),
+
+		-- the hub pages, a static footer under the row (Status sits below it)
+		make("Frame", {
+			Name = "Footer",
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 1, -64),
+			Size = UDim2.new(1, -128, 0, 45),
+			BackgroundTransparency = 1,
+		}, {
+			list(Enum.FillDirection.Horizontal, 12, { HorizontalAlignment = Enum.HorizontalAlignment.Center }),
+			ordered(textButton("Friends", UDim2.fromOffset(240, 45), "FIND FRIENDS", PLAY_GOLD), 1),
+			ordered(textButton("News", UDim2.fromOffset(170, 45), "NEWS", BONE), 2),
+			ordered(textButton("Events", UDim2.fromOffset(170, 45), "EVENTS", BONE), 3),
+		}),
 	})
 end
 
@@ -2241,42 +2255,8 @@ local function dropdownItemTemplate()
 end
 
 -- listed once so a partial rebuild swaps exactly the set a full build adds
--- the hub tile at the front of the row: no backdrop, the game's logo
--- floating over the background and a stack of buttons at the bottom, level
--- with the map cards' Play
-local function hubTileTemplate()
-	local function stacked(object, order, height)
-		object.LayoutOrder = order
-		object.Size = UDim2.new(1, 0, 0, height)
-
-		return object
-	end
-
-	-- the buttons sit on the cards' bottom edge; the logo is the picker's
-	return make("Frame", {
-		Name = "HubTile",
-		Size = UDim2.fromOffset(240, 480),
-		BackgroundTransparency = 1,
-		Visible = false,
-	}, {
-		make("Frame", {
-			Name = "Buttons",
-			AnchorPoint = Vector2.new(0, 1),
-			Position = UDim2.new(0, 0, 1, -20),
-			Size = UDim2.new(1, 0, 0, 141),
-			BackgroundTransparency = 1,
-		}, {
-			list(Enum.FillDirection.Vertical, 9, { VerticalAlignment = Enum.VerticalAlignment.Bottom }),
-			stacked(textButton("Friends", UDim2.new(), "FIND FRIENDS", PLAY_GOLD), 1, 45),
-			stacked(textButton("News", UDim2.new(), "NEWS", BONE), 2, 39),
-			stacked(textButton("Events", UDim2.new(), "EVENTS", BONE), 3, 39),
-		}),
-	})
-end
-
 local function modeTemplates()
 	return {
-		hubTileTemplate(),
 		modeCardTemplate(),
 		sessionRowTemplate(),
 		readoutTemplate(),
@@ -2352,6 +2332,15 @@ if REBUILD_ONLY then
 	if only.Templates then
 		swap(existing.Templates, { cardTemplate() })
 		swap(existing.Templates, modeTemplates())
+
+		-- retired templates an older build left behind
+		for _, name in { "HubTile" } do
+			local old = existing.Templates:FindFirstChild(name)
+
+			if old then
+				old:Destroy()
+			end
+		end
 	end
 
 	print("Lobby UI rebuilt: " .. table.concat(REBUILD_ONLY, ", "))

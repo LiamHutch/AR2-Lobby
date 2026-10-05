@@ -82,7 +82,7 @@ return function(context)
 	-- the ordinal under a picked map tile
 	local ORDINALS = { "1ST", "2ND", "3RD" }
 
-	-- the hub tile's pages borrow ModeView; they have no sessions, their rows
+	-- the picker footer's pages borrow ModeView; they have no sessions, their rows
 	-- come from elsewhere (Client = true)
 	local CLIENT_MODES = {
 		Friends = {
@@ -398,7 +398,9 @@ return function(context)
 
 		setText(primary.Label, label)
 
-		if mode.Key == "Freeroam" and panel == "list" then
+		-- on the list, joining is the main action and the footer's: the
+		-- host/customize button steps back to bone
+		if panel == "list" and not mode.Client then
 			boneButton(primary)
 		else
 			goldButton(primary)
@@ -416,16 +418,16 @@ return function(context)
 	end
 
 	local function drawFooter(row)
-		if openMode.Key == "Freeroam" then
-			goldButton(footer.Join)
-		else
+		if openMode.Client then
 			boneButton(footer.Join)
+		else
+			goldButton(footer.Join)
 		end
 
 		if not row then
 			setText(footer.ServerName, "")
 			setText(footer.Meta, "")
-			setText(footer.Join.Label, (openMode.Client and (inviting and "INVITE" or "JOIN")) or (openMode.Key == "Tourney" and "OPEN" or "JOIN"))
+			setText(footer.Join.Label, openMode.Client and inviting and "INVITE" or "JOIN")
 			setEnabled(footer.Join, false)
 
 			return
@@ -459,7 +461,7 @@ return function(context)
 			setText(footer.Meta, table.concat(meta, "  ·  "))
 		end
 
-		setText(footer.Join.Label, row.Rejoin and "REJOIN" or (openMode.Key == "Tourney" and "OPEN" or "JOIN"))
+		setText(footer.Join.Label, row.Rejoin and "REJOIN" or "JOIN")
 		setEnabled(footer.Join, not row.Full and not isJoining())
 	end
 
@@ -1288,35 +1290,28 @@ return function(context)
 		end)
 	end
 
-	local hubCard = nil
+	-- the hub pages: the picker's footer buttons (an older place has none)
+	local function bindFooter()
+		local hub = stage.Picker:FindFirstChild("Footer")
 
-	-- the hub tile at the front of the row: the logo and the page buttons
-	local function makeHubCard()
-		local template = templates:FindFirstChild("HubTile")
-
-		if not template then
+		if not hub then
 			return
 		end
 
-		hubCard = template:Clone()
-		hubCard.Name = "Hub"
-		hubCard.LayoutOrder = 0
-		hubCard.Visible = true
-
-		bindButton(hubCard.Buttons.Friends, function()
+		bindButton(hub.Friends, function()
 			context.openMode("Friends")
 		end)
 
-		bindButton(hubCard.Buttons.News, function()
+		bindButton(hub.News, function()
 			context.openMode("News")
 		end)
 
-		bindButton(hubCard.Buttons.Events, function()
+		bindButton(hub.Events, function()
 			context.openMode("Events")
 		end)
-
-		hubCard.Parent = cardRow
 	end
+
+	bindFooter()
 
 	local function makeCard(mode, order)
 		local card = templates.ModeCard:Clone()
@@ -1366,10 +1361,6 @@ return function(context)
 
 	-- keeps the tiles after the last map card whenever the maps change
 	function library.SyncCards(mapCount)
-		if not hubCard then
-			makeHubCard()
-		end
-
 		for index, mode in private.Modes do
 			if not cards[mode.Key] then
 				makeCard(mode, mapCount + index)
