@@ -110,6 +110,10 @@ local function resolvePlaces()
 		return nil
 	end
 
+	-- kept for PlaceFor: the private modes resolve their places the same way
+	library.universe = universe
+	library.studioFallback = studioFallback
+
 	for _, map in catalog.Maps do
 		local placeId = first(map.PlaceIds)
 
@@ -543,6 +547,26 @@ end
 -- a listed pool server's PrivateServerId
 function library:PrivateId(jobId)
 	return privateIds[jobId]
+end
+
+-- the map key a public place belongs to, or nil (private places and the
+-- lobby itself aren't maps)
+function library:MapForPlace(placeId)
+	local info = placeInfo[placeId]
+
+	return info and info.Kind == "public" and info.Map or nil
+end
+
+-- the first of placeIds in this universe (Studio without one takes the
+-- first), or nil. Valid after Resolve
+function library:PlaceFor(placeIds)
+	for _, placeId in placeIds do
+		if (self.universe and self.universe[placeId]) or self.studioFallback then
+			return placeId
+		end
+	end
+
+	return nil
 end
 
 local resolved = false

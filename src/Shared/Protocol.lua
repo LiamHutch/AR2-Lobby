@@ -51,8 +51,9 @@
 -- Kinds (lobbies skip kinds they don't handle, so the game can start writing
 -- a new one before any lobby shows it):
 --   public    a normal public server; matchmake, or join by ServerInstanceId
---   freeroam  a host's VIP Freeroam server, one persistent reserved server
+--   freeroam  a host's Free Roam server, one persistent reserved server
 --             per host; joined through the lobby's ticket, never directly
+--   tourney   a reserved match server; roster-locked, never listed or joined
 --
 -- Pools: platform-only servers (the lobby's Pools.lua). "Any" is a map's
 -- public servers, which Roblox matchmakes. Console-only and mobile-only
@@ -122,6 +123,45 @@ return {
 	VIP_VERSION = 1,
 	VIP_HOSTS_STORE = "LobbyVipHosts1",
 	VIP_SERVERS_STORE = "LobbyVipServers1",
+
+	-- private server sessions (Sessions.lua): every player hosts their own
+	-- tourney lobby and free roam server from the lobby. Each host's config is
+	-- lobby-owned (Shared/Private.lua has the shape):
+	--   PRIVATE_STORE  DataStore, key "<kind>:<userId>" -> { v = PRIVATE_VERSION, ... }
+	PRIVATE_STORE = "PrivateConfigs1",
+	PRIVATE_VERSION = 1,
+	-- seconds between re-reads of a hosted free roam server's live data
+	PRIVATE_LIVE_POLL = 30,
+	-- the lobby's own countdown before a match commits and teleports
+	TOURNEY_COUNTDOWN = 10,
+
+	-- game stores the private modes still talk through. Their shapes are the
+	-- game's (Tourney.lua and Freeroam.lua adapt to them); once the game reads
+	-- the lobby's config directly these go
+	--   TOURNEY_HANDOFF_MAP     MemoryStore hash map, key = the reserved match
+	--                           server's PrivateServerId -> the match config
+	--   TOURNEY_SESSIONS_STORE  DataStore, key = userId -> { PlaceId, AccessCode,
+	--                           ServerId, WrittenAt }, written by a running
+	--                           match server so a player can rejoin it
+	--   TOURNEY_LEGACY_STORE    the old VIP lobby's saved match configs, read
+	--                           once to seed a host's lobby config
+	--   FREEROAM_SERVERS_STORE  DataStore, key = hostId -> { AccessCode, ServerId,
+	--                           HostId, CreatedAt }: the host's permanent reserved
+	--                           server, which the game checks on arrival
+	--   FREEROAM_CONFIGS_STORE  DataStore + MemoryStore hash map (FREEROAM_CONFIG_TTL),
+	--                           key = hostId -> the game's config shape, read by
+	--                           the free roam server at boot
+	--   FREEROAM_LOBBIES_MAP    MemoryStore hash map, key = hostId -> live data a
+	--                           running free roam server writes every 15s
+	TOURNEY_HANDOFF_MAP = "Tourney Match Handoff",
+	TOURNEY_HANDOFF_TTL = 24 * 60 * 60,
+	TOURNEY_SESSIONS_STORE = "Tourney Sessions",
+	TOURNEY_SESSION_MAX_AGE = 12 * 60 * 60,
+	TOURNEY_LEGACY_STORE = "VIP Match Configs 3",
+	FREEROAM_SERVERS_STORE = "Freeroam Servers - 4",
+	FREEROAM_CONFIGS_STORE = "Freeroam Configs - 4",
+	FREEROAM_CONFIG_TTL = 60,
+	FREEROAM_LOBBIES_MAP = "Freeroam Lobbies - 4",
 
 	-- the test lobby replaces the AR2 Development Hub in its place and keeps
 	-- the hub's names, so test servers' Hub Beacon and join lock work unchanged

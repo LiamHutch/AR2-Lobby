@@ -1,7 +1,8 @@
 -- Builds ReplicatedFirst.Lobby in the open place. Paste into the Studio command bar.
 -- Destroys and rebuilds Lobby if it exists; hand edits made in Studio are lost,
 -- except Lobby.Background, which is kept as is (it's the game's menu backdrop,
--- art-directed in Studio).
+-- art-directed in Studio). REBUILD_ONLY below swaps in just the private-server
+-- pieces (ModeView, Dropdown, their templates) and keeps everything else.
 --
 -- Styling copies the game's main menu (ReplicatedStorage.Interface.MainMenu.Master
 -- in the game place, mostly VIPHome.FreeroamWindow): Oswald Heavy headers,
@@ -17,6 +18,12 @@
 
 local replicatedFirst = game:GetService("ReplicatedFirst")
 
+-- nil rebuilds everything. { "ModeView", "Dropdown", "Templates" } keeps the
+-- Lobby that's there and only replaces Stage.ModeView, Stage.Dropdown (and
+-- its shield) and the private-server templates, so hand edits elsewhere
+-- survive; drop a name to leave that part alone too
+local REBUILD_ONLY = nil
+
 local OSWALD = "rbxassetid://12187372847"
 local SOURCE_SANS = "rbxasset://fonts/families/SourceSansPro.json"
 
@@ -28,6 +35,8 @@ local GREY = Color3.fromRGB(177, 177, 177)
 local PANEL = Color3.fromRGB(27, 27, 27)
 local NAV = Color3.fromRGB(18, 18, 21) -- the game's nav bar
 local EDGE = Color3.fromRGB(98, 94, 90) -- the game's floating-panel outline
+local AMBER = Color3.fromRGB(227, 166, 74) -- warnings, Kick
+local BLOCKED = Color3.fromRGB(214, 92, 74) -- the blocked-platform red, Ban
 local BLACK = Color3.new(0, 0, 0)
 
 local SHADOW = "rbxassetid://1677877208"
@@ -35,6 +44,7 @@ local HIGHLIGHT = "rbxassetid://6116907099"
 local GRUNGE = "rbxassetid://104544475726279"
 local TORN_EDGE = "rbxassetid://129891927624984"
 local BACK_ICON = "rbxassetid://90333380641559"
+local TOGGLE_ICON = "rbxassetid://5912368763" -- the host's settings/teams switch
 
 local STAGE = Vector2.new(1440, 810)
 
@@ -595,24 +605,19 @@ local function buildPicker()
 	})
 end
 
-local function buildInfo()
-	local function spacer(order, height)
-		return make("Frame", {
-			Name = "Spacer" .. order,
-			LayoutOrder = order,
-			Size = UDim2.fromOffset(1, height),
-			BackgroundTransparency = 1,
-		})
-	end
-
+local function spacer(order, height)
 	return make("Frame", {
-		Name = "Info",
-		Position = UDim2.fromOffset(64, 40),
-		Size = UDim2.fromOffset(600, 740),
+		Name = "Spacer" .. order,
+		LayoutOrder = order,
+		Size = UDim2.fromOffset(1, height),
 		BackgroundTransparency = 1,
-	}, {
-		list(Enum.FillDirection.Vertical, 10),
+	})
+end
 
+-- the top of an Info column: Title, Counts and Blurb, shared by the map and
+-- mode views so they read the same
+local function infoHeader()
+	return {
 		text("Title", { LayoutOrder = 1, Size = UDim2.fromOffset(600, 70) }, {
 			FontFace = font(Enum.FontWeight.Heavy),
 			TextScaled = true,
@@ -658,6 +663,80 @@ local function buildInfo()
 			Size = UDim2.fromOffset(580, 0),
 			Text = "",
 		}, 2),
+	}
+end
+
+-- the slideshow box; the client's slideshow adds its viewports to Clip (ZIndex 1-2)
+local function buildPreview(order)
+	return make("Frame", {
+		Name = "Preview",
+		LayoutOrder = order,
+		Size = UDim2.fromOffset(600, 338),
+		BackgroundColor3 = PANEL,
+		BorderSizePixel = 0,
+	}, {
+		shadow(0.5),
+		lift(true),
+
+		make("Frame", {
+			Name = "Clip",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = PANEL,
+			BorderSizePixel = 0,
+			ClipsDescendants = true,
+			ZIndex = 1,
+		}, {
+			make("UIStroke", {
+				Color = EDGE,
+				Thickness = 2,
+				LineJoinMode = Enum.LineJoinMode.Miter,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			}),
+
+
+			-- keeps the picker readable on bright shots
+			make("Frame", {
+				Name = "Shade",
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.fromScale(0, 1),
+				Size = UDim2.new(1, 0, 0, 56),
+				BackgroundColor3 = BLACK,
+				BorderSizePixel = 0,
+				ZIndex = 3,
+			}, {
+				make("UIGradient", {
+					Rotation = 90,
+					Transparency = numbers({ { 0, 1 }, { 1, 0.45 } }),
+				}),
+			}),
+
+			-- one PreviewDot per image, made by the client
+			make("Frame", {
+				Name = "Dots",
+				AnchorPoint = Vector2.new(0.5, 1),
+				Position = UDim2.new(0.5, 0, 1, -6),
+				Size = UDim2.new(1, -24, 0, 26),
+				BackgroundTransparency = 1,
+				ZIndex = 4,
+			}, {
+				list(Enum.FillDirection.Horizontal, 2, {
+					HorizontalAlignment = Enum.HorizontalAlignment.Center,
+					VerticalAlignment = Enum.VerticalAlignment.Center,
+				}),
+			}),
+		}),
+	})
+end
+
+local function buildInfo()
+	return make("Frame", {
+		Name = "Info",
+		Position = UDim2.fromOffset(64, 40),
+		Size = UDim2.fromOffset(600, 740),
+		BackgroundTransparency = 1,
+	}, {
+		list(Enum.FillDirection.Vertical, 10),
+		infoHeader(),
 
 		make("Frame", {
 			Name = "Stats",
@@ -686,67 +765,7 @@ local function buildInfo()
 		}, 1),
 
 		spacer(7, 4),
-
-		make("Frame", {
-			Name = "Preview",
-			LayoutOrder = 8,
-			Size = UDim2.fromOffset(600, 338),
-			BackgroundColor3 = PANEL,
-			BorderSizePixel = 0,
-		}, {
-			shadow(0.5),
-			lift(true),
-
-			-- the client's slideshow adds its viewports here (ZIndex 1-2)
-			make("Frame", {
-				Name = "Clip",
-				Size = UDim2.fromScale(1, 1),
-				BackgroundColor3 = PANEL,
-				BorderSizePixel = 0,
-				ClipsDescendants = true,
-				ZIndex = 1,
-			}, {
-				make("UIStroke", {
-					Color = EDGE,
-					Thickness = 2,
-					LineJoinMode = Enum.LineJoinMode.Miter,
-					ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-				}),
-
-
-				-- keeps the picker readable on bright shots
-				make("Frame", {
-					Name = "Shade",
-					AnchorPoint = Vector2.new(0, 1),
-					Position = UDim2.fromScale(0, 1),
-					Size = UDim2.new(1, 0, 0, 56),
-					BackgroundColor3 = BLACK,
-					BorderSizePixel = 0,
-					ZIndex = 3,
-				}, {
-					make("UIGradient", {
-						Rotation = 90,
-						Transparency = numbers({ { 0, 1 }, { 1, 0.45 } }),
-					}),
-				}),
-
-				-- one PreviewDot per image, made by the client
-				make("Frame", {
-					Name = "Dots",
-					AnchorPoint = Vector2.new(0.5, 1),
-					Position = UDim2.new(0.5, 0, 1, -6),
-					Size = UDim2.new(1, -24, 0, 26),
-					BackgroundTransparency = 1,
-					ZIndex = 4,
-				}, {
-					list(Enum.FillDirection.Horizontal, 2, {
-						HorizontalAlignment = Enum.HorizontalAlignment.Center,
-						VerticalAlignment = Enum.VerticalAlignment.Center,
-					}),
-				}),
-			}),
-		}),
-
+		buildPreview(8),
 		spacer(9, 6),
 
 		make("Frame", {
@@ -807,22 +826,111 @@ local function sortChip(name, label, order, width)
 	})
 end
 
-local function buildBrowser()
-	local function column(name, label, position, size, align)
-		return make("TextLabel", {
-			Name = name,
-			Position = position,
-			Size = size,
-			BackgroundTransparency = 1,
-			FontFace = font(Enum.FontWeight.SemiBold),
-			TextSize = 13,
-			TextColor3 = BONE,
-			TextTransparency = 0.55,
-			TextXAlignment = align or Enum.TextXAlignment.Left,
-			Text = label,
-		})
-	end
+-- a sortChip at another size, for the small row chips (Join, Kick, Ban) and
+-- the settings value; order 0 for ones placed by hand
+local function chip(name, label, width, height, textSize, order)
+	local object = sortChip(name, label, order or 0, width)
+	object.Size = UDim2.fromOffset(width, height)
+	object.Label.TextSize = textSize
 
+	return object
+end
+
+local function column(name, label, position, size, align)
+	return make("TextLabel", {
+		Name = name,
+		Position = position,
+		Size = size,
+		BackgroundTransparency = 1,
+		FontFace = font(Enum.FontWeight.SemiBold),
+		TextSize = 13,
+		TextColor3 = BONE,
+		TextTransparency = 0.55,
+		TextXAlignment = align or Enum.TextXAlignment.Left,
+		Text = label,
+	})
+end
+
+-- the browser's row list, for an edgeFade: bare scroller, 4px between rows.
+-- extra goes to the list layout (the panes right-align their rows)
+local function listScroller(extra)
+	return make("ScrollingFrame", {
+		Name = "List",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ScrollBarThickness = 0,
+		ScrollBarImageTransparency = 1,
+	}, {
+		list(Enum.FillDirection.Vertical, 4, extra),
+
+		-- room for the highlight box, which overhangs rows by 5px
+		make("UIPadding", {
+			PaddingTop = UDim.new(0, 6),
+			PaddingBottom = UDim.new(0, 6),
+			PaddingLeft = UDim.new(0, 6),
+			PaddingRight = UDim.new(0, 6),
+		}),
+	})
+end
+
+local function emptyText(label)
+	return text("Empty", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 200),
+		Size = UDim2.fromOffset(400, 30),
+		Visible = false,
+	}, {
+		FontFace = font(Enum.FontWeight.SemiBold, Enum.FontStyle.Italic),
+		TextSize = 22,
+		TextColor3 = BONE,
+		TextTransparency = 0.5,
+		Text = label,
+	}, 2)
+end
+
+-- the picked row's name and details, with Join on the right
+local function buildFooter()
+	return make("Frame", {
+		Name = "Footer",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, 80),
+		BackgroundTransparency = 1,
+	}, {
+		text("ServerName", { Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, -230, 0, 38) }, {
+			FontFace = font(Enum.FontWeight.Heavy),
+			TextSize = 32,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = "",
+		}, 4),
+
+		text("Meta", { Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, -230, 0, 24) }, {
+			FontFace = font(Enum.FontWeight.Medium, Enum.FontStyle.Italic),
+			TextSize = 18,
+			TextColor3 = BONE,
+			TextTransparency = 0.4,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			RichText = true, -- an outdated version shows in amber
+			Text = "",
+		}, 2),
+
+		(function()
+			local object = textButton("Join", UDim2.fromOffset(200, 60), "JOIN", BONE)
+			object.AnchorPoint = Vector2.new(1, 0.5)
+			object.Position = UDim2.fromScale(1, 0.5)
+
+			return object
+		end)(),
+	})
+end
+
+local function buildBrowser()
 	return make("Frame", {
 		Name = "Browser",
 		Position = UDim2.fromOffset(704, 52),
@@ -878,75 +986,10 @@ local function buildBrowser()
 		edgeFade({
 			Position = UDim2.fromOffset(0, 124),
 			Size = UDim2.new(1, 0, 1, -124 - 96),
-		}, make("ScrollingFrame", {
-			Name = "List",
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			CanvasSize = UDim2.new(),
-			AutomaticCanvasSize = Enum.AutomaticSize.Y,
-			ScrollingDirection = Enum.ScrollingDirection.Y,
-			ScrollBarThickness = 0,
-			ScrollBarImageTransparency = 1,
-		}, {
-			list(Enum.FillDirection.Vertical, 4),
+		}, listScroller()),
 
-			-- room for the highlight box, which overhangs rows by 5px
-			make("UIPadding", {
-				PaddingTop = UDim.new(0, 6),
-				PaddingBottom = UDim.new(0, 6),
-				PaddingLeft = UDim.new(0, 6),
-				PaddingRight = UDim.new(0, 6),
-			}),
-		})),
-
-		text("Empty", {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 200),
-			Size = UDim2.fromOffset(400, 30),
-			Visible = false,
-		}, {
-			FontFace = font(Enum.FontWeight.SemiBold, Enum.FontStyle.Italic),
-			TextSize = 22,
-			TextColor3 = BONE,
-			TextTransparency = 0.5,
-			Text = spaced("No Servers"),
-		}, 2),
-
-		make("Frame", {
-			Name = "Footer",
-			AnchorPoint = Vector2.new(0, 1),
-			Position = UDim2.fromScale(0, 1),
-			Size = UDim2.new(1, 0, 0, 80),
-			BackgroundTransparency = 1,
-		}, {
-			text("ServerName", { Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, -230, 0, 38) }, {
-				FontFace = font(Enum.FontWeight.Heavy),
-				TextSize = 32,
-				TextColor3 = BONE,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				TextTruncate = Enum.TextTruncate.AtEnd,
-				Text = "",
-			}, 4),
-
-			text("Meta", { Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, -230, 0, 24) }, {
-				FontFace = font(Enum.FontWeight.Medium, Enum.FontStyle.Italic),
-				TextSize = 18,
-				TextColor3 = BONE,
-				TextTransparency = 0.4,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				TextTruncate = Enum.TextTruncate.AtEnd,
-				RichText = true, -- an outdated version shows in amber
-				Text = "",
-			}, 2),
-
-			(function()
-				local object = textButton("Join", UDim2.fromOffset(200, 60), "JOIN", BONE)
-				object.AnchorPoint = Vector2.new(1, 0.5)
-				object.Position = UDim2.fromScale(1, 0.5)
-
-				return object
-			end)(),
-		}),
+		emptyText(spaced("No Servers")),
+		buildFooter(),
 	})
 end
 
@@ -990,6 +1033,248 @@ local function buildMapView()
 		buildPanel(),
 		buildInfo(),
 		buildBrowser(),
+	})
+end
+
+----
+
+-- the mode view's one gold action: auto-width, a plus drawn from two bars so
+-- it doesn't depend on icon art
+local function inviteChip()
+	local object = sortChip("Invite", "INVITE", 5, 104)
+	object.Stroke.Color = GOLD
+	object.Stroke.Transparency = 0.4
+	object.Label.TextColor3 = GOLD
+	object.Label.TextTransparency = 0.1
+	-- the label leaves room for the plus on its left
+	object.Label.Position = UDim2.fromOffset(12, 0)
+	object.Label.Size = UDim2.new(1, -12, 1, 0)
+
+	local function bar(name, width, height)
+		return make("Frame", {
+			Name = name,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(width, height),
+			BackgroundColor3 = GOLD,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+		})
+	end
+
+	-- a plus drawn from two bars, so it needs no icon art
+	make("Frame", {
+		Name = "Icon",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 12, 0.5, 0),
+		Size = UDim2.fromOffset(12, 12),
+		BackgroundTransparency = 1,
+		ZIndex = 2,
+		Parent = object,
+	}, {
+		bar("Across", 12, 2),
+		bar("Down", 2, 12),
+	})
+
+	return object
+end
+
+local function buildModeInfo()
+	return make("Frame", {
+		Name = "Info",
+		Position = UDim2.fromOffset(64, 40),
+		Size = UDim2.fromOffset(600, 740),
+		BackgroundTransparency = 1,
+	}, {
+		list(Enum.FillDirection.Vertical, 10),
+		infoHeader(),
+
+		make("Frame", {
+			Name = "Platforms",
+			LayoutOrder = 4,
+			Size = UDim2.fromOffset(600, 26),
+			BackgroundTransparency = 1,
+		}, {
+			list(Enum.FillDirection.Horizontal, 8),
+		}),
+
+		-- who can join the host's session; the client shows it to the host
+		make("Frame", {
+			Name = "Visibility",
+			LayoutOrder = 5,
+			Size = UDim2.fromOffset(600, 30),
+			BackgroundTransparency = 1,
+			Visible = false,
+		}, {
+			list(Enum.FillDirection.Horizontal, 8, { VerticalAlignment = Enum.VerticalAlignment.Center }),
+			sortChip("Private", "PRIVATE", 1, 96),
+			sortChip("Friends", "FRIENDS", 2, 96),
+			sortChip("Public", "PUBLIC", 3, 96),
+
+			make("Frame", {
+				Name = "Divider",
+				LayoutOrder = 4,
+				Size = UDim2.fromOffset(2, 22),
+				BackgroundColor3 = BONE,
+				BackgroundTransparency = 0.8,
+				BorderSizePixel = 0,
+			}),
+
+			inviteChip(),
+		}),
+
+		spacer(6, 4),
+		buildPreview(7),
+		spacer(8, 6),
+
+		make("Frame", {
+			Name = "Buttons",
+			LayoutOrder = 9,
+			Size = UDim2.fromOffset(600, 60),
+			BackgroundTransparency = 1,
+		}, {
+			list(Enum.FillDirection.Horizontal, 12),
+			ordered(iconButton("Back", BACK_ICON), 1),
+			ordered(flexible(textButton("Primary", UDim2.fromOffset(355, 60), "HOST A MATCH", PLAY_GOLD)), 2),
+			-- the host's settings/teams switch; smaller art than Back's, so it's inset
+			(function()
+				local object = ordered(iconButton("Toggle", TOGGLE_ICON), 3)
+				object.Icon.AnchorPoint = Vector2.new(0.5, 0.5)
+				object.Icon.Position = UDim2.fromScale(0.5, 0.5)
+				object.Icon.Size = UDim2.fromScale(0.6, 0.6)
+				object.Visible = false
+
+				return object
+			end)(),
+		}),
+	})
+end
+
+-- the session browser: the Browser's layout with lobby columns
+local function buildLobbies()
+	return make("Frame", {
+		Name = "Lobbies",
+		Position = UDim2.fromOffset(704, 52),
+		Size = UDim2.fromOffset(STAGE.X - 48 - 704, 710),
+		BackgroundTransparency = 1,
+		Visible = false,
+	}, {
+		text("Heading", { Size = UDim2.fromOffset(320, 50) }, {
+			FontFace = font(Enum.FontWeight.Heavy),
+			TextSize = 44,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = spaced("Lobbies"),
+		}, 4),
+
+		make("Frame", {
+			Name = "Filters",
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, 10),
+			Size = UDim2.fromOffset(300, 30),
+			BackgroundTransparency = 1,
+		}, {
+			list(Enum.FillDirection.Horizontal, 8, { HorizontalAlignment = Enum.HorizontalAlignment.Right }),
+			sortChip("Friends", "FRIENDS", 1, 96),
+			sortChip("Public", "PUBLIC", 2, 96),
+			sortChip("Open", "OPEN", 3, 88),
+		}),
+
+		searchField(),
+
+		-- same offsets as SessionRow's cells, inside the list's 6px padding
+		make("Frame", {
+			Name = "Columns",
+			Position = UDim2.fromOffset(6, 100),
+			Size = UDim2.new(1, -12, 0, 18),
+			BackgroundTransparency = 1,
+		}, {
+			column("Host", spaced("Host"), UDim2.fromOffset(14, 0), UDim2.new(1, -300, 1, 0)),
+			column("Access", spaced("Access"), UDim2.new(1, -290, 0, 0), UDim2.new(0, 120, 1, 0)),
+			column("Players", spaced("Players"), UDim2.new(1, -104, 0, 0), UDim2.new(0, 90, 1, 0), Enum.TextXAlignment.Right),
+		}),
+
+		edgeFade({
+			Position = UDim2.fromOffset(0, 124),
+			Size = UDim2.new(1, 0, 1, -124 - 96),
+		}, listScroller()),
+
+		emptyText(spaced("No Lobbies")),
+		buildFooter(),
+	})
+end
+
+-- a right-hand pane the client fills with template clones (all 460 wide),
+-- kept against the right edge so they line up under each other
+local function buildPane(name)
+	return make("Frame", {
+		Name = name,
+		Position = UDim2.fromOffset(704, 52),
+		Size = UDim2.fromOffset(STAGE.X - 48 - 704, 710),
+		BackgroundTransparency = 1,
+		Visible = false,
+	}, {
+		edgeFade({
+			Size = UDim2.fromScale(1, 1),
+		}, listScroller({ HorizontalAlignment = Enum.HorizontalAlignment.Right })),
+	})
+end
+
+-- the private-server screen: a mode's info on the left, one of four panes on
+-- the right (the client shows one at a time)
+local function buildModeView()
+	return make("Frame", {
+		Name = "ModeView",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Visible = false,
+	}, {
+		buildPanel(),
+		buildModeInfo(),
+		buildLobbies(),
+		buildPane("Roster"),
+		buildPane("Config"),
+		buildPane("Server"),
+	})
+end
+
+-- the settings menu: the client parks it under the chip that opened it and
+-- fills it with DropdownItem clones. Above every screen
+local function buildDropdown()
+	return make("Frame", {
+		Name = "Dropdown",
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.fromOffset(170, 0),
+		BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+		BackgroundTransparency = 0.04,
+		BorderSizePixel = 0,
+		Visible = false,
+		ZIndex = 50,
+	}, {
+		make("UIStroke", {
+			Name = "Stroke",
+			Color = BONE,
+			Transparency = 0.45,
+			Thickness = 2,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
+		lift(true),
+		list(Enum.FillDirection.Vertical, 0),
+	})
+end
+
+-- a clear button over the whole stage, just under the dropdown: pressing
+-- anywhere else closes it
+local function buildDropdownShield()
+	return make("ImageButton", {
+		Name = "DropdownShield",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		AutoButtonColor = false,
+		Image = "",
+		Visible = false,
+		ZIndex = 49,
 	})
 end
 
@@ -1263,14 +1548,34 @@ local function tagTemplate()
 	})
 end
 
+-- a row cell: a text box the client fills, left aligned unless told otherwise
+local function cell(name, position, size, props, offset)
+	props.TextXAlignment = props.TextXAlignment or Enum.TextXAlignment.Left
+	props.Text = ""
+
+	return text(name, { Position = position, Size = size, ZIndex = 2 }, props, offset)
+end
+
+-- fades in from the left like the game's player-list slots
+local function rowFade()
+	return make("UIGradient", {
+		Transparency = numbers({ { 0, 1 }, { 0.082, 0.681 }, { 0.262, 0.244 }, { 1, 0 } }),
+	})
+end
+
+-- off until the client marks the row (picked, or the one you're in)
+local function rowStroke()
+	return make("UIStroke", {
+		Name = "Stroke",
+		Color = EDGE,
+		Thickness = 2,
+		LineJoinMode = Enum.LineJoinMode.Miter,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Enabled = false,
+	})
+end
+
 local function rowTemplate()
-	local function cell(name, position, size, props, offset)
-		props.TextXAlignment = props.TextXAlignment or Enum.TextXAlignment.Left
-		props.Text = ""
-
-		return text(name, { Position = position, Size = size, ZIndex = 2 }, props, offset)
-	end
-
 	return make("ImageButton", {
 		Name = "ServerRow",
 		Size = UDim2.new(1, 0, 0, 58),
@@ -1281,18 +1586,8 @@ local function rowTemplate()
 		Image = "",
 		Visible = false,
 	}, {
-		-- fades in from the left like the game's player-list slots
-		make("UIGradient", {
-			Transparency = numbers({ { 0, 1 }, { 0.082, 0.681 }, { 0.262, 0.244 }, { 1, 0 } }),
-		}),
-		make("UIStroke", {
-			Name = "Stroke",
-			Color = EDGE,
-			Thickness = 2,
-			LineJoinMode = Enum.LineJoinMode.Miter,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-			Enabled = false,
-		}),
+		rowFade(),
+		rowStroke(),
 
 		cell("Server", UDim2.fromOffset(14, 5), UDim2.new(1, -410, 0, 28), {
 			FontFace = font(Enum.FontWeight.Medium, Enum.FontStyle.Italic),
@@ -1336,9 +1631,671 @@ local function rowTemplate()
 	})
 end
 
+---- private-server templates (the ModeView's clones)
+
+-- a MapCard for a game mode: narrower, no Play, vector art where the map
+-- card has a slideshow. Built from the card so the two can't drift apart
+local function modeCardTemplate()
+	local object = cardTemplate()
+	object.Name = "ModeCard"
+	object.Size = UDim2.fromOffset(320, 640)
+	object.Play:Destroy()
+
+	local function place(child, y, height)
+		child.Position = UDim2.new(0, 24, 1, y)
+		child.Size = UDim2.new(1, -48, 0, height)
+	end
+
+	place(object.Title, -196, 52)
+	place(object.Online, -130, 30)
+	place(object.Tags, -86, 24)
+	place(object.Platforms, -52, 26)
+	object.Online.Text.TextSize = 26
+	object.Online.Shadow.TextSize = 26
+
+	-- the client sets Image; after Clip so it draws over the Fade
+	make("ImageLabel", {
+		Name = "Icon",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.fromOffset(220, 220),
+		BackgroundTransparency = 1,
+		Image = "",
+		ImageColor3 = BONE,
+		ImageTransparency = 0.86,
+		ZIndex = 1,
+		Parent = object,
+	})
+
+	return object
+end
+
+local function sessionRowTemplate()
+	return make("ImageButton", {
+		Name = "SessionRow",
+		Size = UDim2.new(1, 0, 0, 58),
+		BackgroundColor3 = BONE,
+		BackgroundTransparency = 0.93,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Image = "",
+		Visible = false,
+	}, {
+		rowFade(),
+		rowStroke(),
+
+		-- the host and its tag share a baseline, so the tag follows a name of
+		-- any length
+		make("Frame", {
+			Name = "Line",
+			Position = UDim2.fromOffset(14, 5),
+			Size = UDim2.new(1, -300, 0, 28),
+			BackgroundTransparency = 1,
+			ZIndex = 2,
+		}, {
+			list(Enum.FillDirection.Horizontal, 10, { VerticalAlignment = Enum.VerticalAlignment.Bottom }),
+
+			text("Host", { LayoutOrder = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 28) }, {
+				FontFace = font(Enum.FontWeight.Medium, Enum.FontStyle.Italic),
+				TextSize = 22,
+				TextColor3 = BONE,
+				TextYAlignment = Enum.TextYAlignment.Bottom,
+				Size = UDim2.fromOffset(0, 28),
+				Text = "",
+			}, 2),
+
+			text("Tag", { LayoutOrder = 2, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 28) }, {
+				FontFace = font(Enum.FontWeight.Bold),
+				TextSize = 12,
+				TextColor3 = GOLD,
+				TextYAlignment = Enum.TextYAlignment.Bottom,
+				Size = UDim2.fromOffset(0, 28),
+				Text = "",
+			}, 1),
+		}),
+
+		cell("Detail", UDim2.fromOffset(14, 34), UDim2.new(1, -300, 0, 18), {
+			FontFace = font(Enum.FontWeight.Regular),
+			TextSize = 15,
+			TextColor3 = BONE,
+			TextTransparency = 0.58,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+		}, 1),
+
+		cell("Access", UDim2.new(1, -290, 0, 0), UDim2.new(0, 120, 1, 0), {
+			FontFace = font(Enum.FontWeight.Medium, Enum.FontStyle.Italic),
+			TextSize = 18,
+			TextColor3 = BONE,
+			TextTransparency = 0.3,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+		}, 2),
+
+		cell("Players", UDim2.new(1, -104, 0, 0), UDim2.new(0, 90, 1, 0), {
+			FontFace = font(Enum.FontWeight.SemiBold, Enum.FontStyle.Italic),
+			TextSize = 22,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Right,
+		}, 2),
+
+		highlight(),
+	})
+end
+
+-- a pane entry with no background: Readout, TeamHeader, SectionHeading, TeamEdit
+local function paneFrame(name, height, children)
+	return make("Frame", {
+		Name = name,
+		Size = UDim2.fromOffset(460, height),
+		BackgroundTransparency = 1,
+		Visible = false,
+	}, children)
+end
+
+-- a pane row with the server row's wash: Slot, SettingRow, PlayerRow
+local function paneRow(name, height, transparency, stroked, children)
+	return make("Frame", {
+		Name = name,
+		Size = UDim2.fromOffset(460, height),
+		BackgroundColor3 = BONE,
+		BackgroundTransparency = transparency,
+		BorderSizePixel = 0,
+		Visible = false,
+	}, {
+		rowFade(),
+		stroked and rowStroke() or {},
+		children,
+	})
+end
+
+-- a team's colour, solid on the right and gone by the left; the client tints it
+local function band()
+	return make("Frame", {
+		Name = "Band",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+	}, {
+		make("UIGradient", {
+			Name = "Fade",
+			Transparency = numbers({ { 0, 1 }, { 0.45, 0.55 }, { 1, 0 } }),
+		}),
+	})
+end
+
+-- a chip anchored to the right of a pane row
+local function rowChip(name, label, width, height, textSize, inset)
+	local object = chip(name, label, width, height, textSize)
+	object.AnchorPoint = Vector2.new(1, 0.5)
+	object.Position = UDim2.new(1, -inset, 0.5, 0)
+	object.ZIndex = 2
+
+	return object
+end
+
+-- a coloured chip: the sortChip's washed-out stroke and label would hide the colour
+local function tint(object, color)
+	object.Stroke.Color = color
+	object.Stroke.Transparency = 0.4
+	object.Label.TextColor3 = color
+	object.Label.TextTransparency = 0.1
+
+	return object
+end
+
+-- a big figure with a caption under it
+local function readoutTemplate()
+	return paneFrame("Readout", 62, {
+		text("Big", { Size = UDim2.fromOffset(460, 32) }, {
+			FontFace = font(Enum.FontWeight.SemiBold, Enum.FontStyle.Italic),
+			TextSize = 28,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = "",
+		}, 2),
+
+		text("Small", { Position = UDim2.fromOffset(0, 34), Size = UDim2.fromOffset(460, 24) }, {
+			FontFace = Font.new(SOURCE_SANS, Enum.FontWeight.Regular, Enum.FontStyle.Italic),
+			TextSize = 18,
+			TextColor3 = BONE,
+			TextTransparency = 0.4,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = "",
+		}, 1),
+	})
+end
+
+local function teamHeaderTemplate()
+	return paneFrame("TeamHeader", 42, {
+		band(),
+
+		text("Title", { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -200, 1, 0), ZIndex = 2 }, {
+			FontFace = font(Enum.FontWeight.Heavy),
+			TextSize = 30,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = "",
+		}, 2),
+
+		text("Count", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -84, 0.5, 0),
+			Size = UDim2.fromOffset(90, 20),
+			ZIndex = 2,
+		}, {
+			FontFace = font(Enum.FontWeight.Medium, Enum.FontStyle.Italic),
+			TextSize = 16,
+			TextColor3 = BONE,
+			TextTransparency = 0.25,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = "",
+		}, 1),
+
+		rowChip("Join", "JOIN", 66, 26, 13, 8),
+	})
+end
+
+-- a player's place on a team
+local function slotTemplate()
+	local kick = tint(rowChip("Kick", "KICK", 56, 22, 12, 6), AMBER)
+	kick.Visible = false
+
+	return paneRow("Slot", 30, 0.93, true, {
+		text("Player", { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -120, 1, 0), ZIndex = 2 }, {
+			FontFace = font(Enum.FontWeight.Medium),
+			TextSize = 18,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = "",
+		}, 1),
+
+		kick,
+	})
+end
+
+local function sectionHeadingTemplate()
+	return paneFrame("SectionHeading", 50, {
+		text("Title", { Size = UDim2.fromOffset(460, 50) }, {
+			FontFace = font(Enum.FontWeight.Heavy),
+			TextSize = 36,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = "",
+		}, 4),
+
+		text("Note", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -8), Size = UDim2.fromOffset(300, 20) }, {
+			FontFace = font(Enum.FontWeight.Medium, Enum.FontStyle.Italic),
+			TextSize = 18,
+			TextColor3 = BONE,
+			TextTransparency = 0.5,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = "",
+		}, 2),
+	})
+end
+
+-- a setting and its value; the client opens the Dropdown from the chip
+local function settingRowTemplate()
+	local value = rowChip("Value", "", 170, 28, 16, 4)
+	value.Stroke.Transparency = 0.45
+	value.Label.FontFace = font(Enum.FontWeight.SemiBold)
+	value.Label.TextXAlignment = Enum.TextXAlignment.Left
+	value.Label.TextTruncate = Enum.TextTruncate.AtEnd
+	value.Label.TextTransparency = 0.1
+	-- on the label, not the chip, so the highlight and hitbox keep its full size
+	make("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 28), Parent = value.Label })
+
+	-- the back arrow turned to point down
+	make("ImageLabel", {
+		Name = "Chevron",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -8, 0.5, 0),
+		Size = UDim2.fromOffset(14, 14),
+		BackgroundTransparency = 1,
+		Image = BACK_ICON,
+		ImageColor3 = BONE,
+		ImageTransparency = 0.4,
+		ScaleType = Enum.ScaleType.Fit,
+		Rotation = -90,
+		ZIndex = 2,
+		Parent = value,
+	})
+
+	return paneRow("SettingRow", 30, 0.95, false, {
+		text("Label", { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -190, 1, 0), ZIndex = 2 }, {
+			FontFace = font(Enum.FontWeight.Medium),
+			TextSize = 19,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = "",
+		}, 1),
+
+		value,
+	})
+end
+
+-- a team's name and colour, for the host
+local function teamEditTemplate()
+	return paneFrame("TeamEdit", 72, {
+		band(),
+
+		make("Frame", {
+			Name = "NameBox",
+			Position = UDim2.fromOffset(12, 8),
+			Size = UDim2.fromOffset(240, 30),
+			BackgroundColor3 = BLACK,
+			BackgroundTransparency = 0.4,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+		}, {
+			make("UIStroke", {
+				Name = "Stroke",
+				Color = BONE,
+				Transparency = 0.5,
+				Thickness = 2,
+				LineJoinMode = Enum.LineJoinMode.Miter,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			}),
+
+			make("TextBox", {
+				Name = "Input",
+				Position = UDim2.fromOffset(10, 0),
+				Size = UDim2.new(1, -20, 1, 0),
+				BackgroundTransparency = 1,
+				ClearTextOnFocus = false,
+				FontFace = font(Enum.FontWeight.Heavy),
+				TextSize = 20,
+				TextColor3 = BONE,
+				PlaceholderText = spaced("Team name"),
+				PlaceholderColor3 = Color3.fromRGB(120, 118, 114),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Text = "",
+				ZIndex = 3,
+			}),
+		}),
+
+		-- filled with Swatch clones
+		make("Frame", {
+			Name = "Swatches",
+			Position = UDim2.fromOffset(12, 46),
+			Size = UDim2.new(1, -24, 0, 18),
+			BackgroundTransparency = 1,
+			ZIndex = 2,
+		}, {
+			list(Enum.FillDirection.Horizontal, 4),
+		}),
+	})
+end
+
+-- a team colour to pick; the client sets the colour and brightens the stroke
+-- on the picked one
+local function swatchTemplate()
+	return make("ImageButton", {
+		Name = "Swatch",
+		Size = UDim2.fromOffset(18, 18),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Image = "",
+		Visible = false,
+	}, {
+		make("UIStroke", {
+			Name = "Stroke",
+			Color = BLACK,
+			Transparency = 0.5,
+			Thickness = 2,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
+	})
+end
+
+-- grows with its MapTile clones
+local function mapTilesTemplate()
+	return make("Frame", {
+		Name = "MapTiles",
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.fromOffset(460, 0),
+		BackgroundTransparency = 1,
+		Visible = false,
+	}, {
+		make("UIGridLayout", {
+			Name = "Grid",
+			-- two across: three made the names too small to read
+			CellSize = UDim2.fromOffset(226, 110),
+			CellPadding = UDim2.fromOffset(8, 8),
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		}),
+	})
+end
+
+-- a map to pick; dimmed until picked, when the client brightens it
+local function mapTileTemplate()
+	return make("ImageButton", {
+		Name = "MapTile",
+		Size = UDim2.fromOffset(226, 110),
+		BackgroundColor3 = PANEL,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Image = "",
+		ImageColor3 = Color3.fromRGB(150, 150, 150),
+		ScaleType = Enum.ScaleType.Crop,
+		Visible = false,
+	}, {
+		make("UIStroke", {
+			Name = "Stroke",
+			Color = EDGE,
+			Transparency = 0.6,
+			Thickness = 2,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
+
+		-- keeps the name readable on bright art
+		make("Frame", {
+			Name = "Shade",
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.fromScale(0, 1),
+			Size = UDim2.new(1, 0, 0, 54),
+			BackgroundColor3 = BLACK,
+			BorderSizePixel = 0,
+		}, {
+			make("UIGradient", {
+				Rotation = 90,
+				Transparency = numbers({ { 0, 1 }, { 1, 0.25 } }),
+			}),
+		}),
+
+		text("Title", { Position = UDim2.new(0, 10, 1, -34), Size = UDim2.new(1, -20, 0, 28), ZIndex = 2 }, {
+			FontFace = font(Enum.FontWeight.SemiBold, Enum.FontStyle.Italic),
+			TextSize = 22,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = "",
+		}, 2),
+
+		-- the pick order, on its own black tag so it reads over any art
+		make("Frame", {
+			Name = "Pick",
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -6, 0, 6),
+			Size = UDim2.fromOffset(44, 22),
+			BackgroundColor3 = BLACK,
+			BackgroundTransparency = 0.25,
+			BorderSizePixel = 0,
+			Visible = false,
+			ZIndex = 3,
+		}, {
+			make("UIStroke", {
+				Name = "Stroke",
+				Color = GOLD,
+				Thickness = 2,
+				LineJoinMode = Enum.LineJoinMode.Miter,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			}),
+
+			make("TextLabel", {
+				Name = "Text",
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+				FontFace = font(Enum.FontWeight.Bold),
+				TextSize = 13,
+				TextColor3 = GOLD,
+				Text = "",
+				ZIndex = 3,
+			}),
+		}),
+
+		highlight(0.6),
+	})
+end
+
+-- a player on the host's server, with moderation chips the client shows as it fits
+local function playerRowTemplate()
+	return paneRow("PlayerRow", 34, 0.95, true, {
+		text("Player", { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -160, 1, 0), ZIndex = 2 }, {
+			FontFace = font(Enum.FontWeight.Medium),
+			TextSize = 19,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = "",
+		}, 1),
+
+		make("Frame", {
+			Name = "Actions",
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -4, 0.5, 0),
+			Size = UDim2.fromOffset(150, 22),
+			BackgroundTransparency = 1,
+			ZIndex = 2,
+		}, {
+			list(Enum.FillDirection.Horizontal, 6, { HorizontalAlignment = Enum.HorizontalAlignment.Right }),
+			tint(chip("Ban", "BAN", 48, 22, 12, 1), BLOCKED),
+
+			(function()
+				local object = chip("Unban", "UNBAN", 62, 22, 12, 2)
+				object.Stroke.Transparency = 0.4
+
+				return object
+			end)(),
+		}),
+	})
+end
+
+-- one choice in the Dropdown; the client fills the background on hover
+local function dropdownItemTemplate()
+	return make("ImageButton", {
+		Name = "DropdownItem",
+		Size = UDim2.new(1, 0, 0, 30),
+		BackgroundColor3 = BONE,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Image = "",
+		Visible = false,
+	}, {
+		make("TextLabel", {
+			Name = "Label",
+			Position = UDim2.fromOffset(10, 0),
+			Size = UDim2.new(1, -20, 1, 0),
+			BackgroundTransparency = 1,
+			FontFace = font(Enum.FontWeight.SemiBold),
+			TextSize = 16,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = "",
+			ZIndex = 2,
+		}),
+	})
+end
+
+-- listed once so a partial rebuild swaps exactly the set a full build adds
+-- the hub tile at the front of the row: no backdrop, the game's logo
+-- floating over the background and a stack of buttons at the bottom, level
+-- with the map cards' Play
+-- the game's loading-screen logo, 892x292; its drop shadow is baked into
+-- the asset, a UIShadow blurs badly on it
+local LOGO = "rbxassetid://81852070951145"
+
+local function hubTileTemplate()
+	local function stacked(object, order, height)
+		object.LayoutOrder = order
+		object.Size = UDim2.new(1, 0, 0, height)
+
+		return object
+	end
+
+	return make("Frame", {
+		Name = "HubTile",
+		Size = UDim2.fromOffset(320, 640),
+		BackgroundTransparency = 1,
+		Visible = false,
+	}, {
+		make("ImageLabel", {
+			Name = "Logo",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 150),
+			Size = UDim2.fromOffset(300, 98),
+			BackgroundTransparency = 1,
+			Image = LOGO,
+			ScaleType = Enum.ScaleType.Fit,
+		}),
+
+		make("Frame", {
+			Name = "Buttons",
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 0, 1, -26),
+			Size = UDim2.new(1, 0, 0, 188),
+			BackgroundTransparency = 1,
+		}, {
+			list(Enum.FillDirection.Vertical, 12, { VerticalAlignment = Enum.VerticalAlignment.Bottom }),
+			stacked(textButton("Friends", UDim2.new(), "FIND FRIENDS", PLAY_GOLD), 1, 60),
+			stacked(textButton("News", UDim2.new(), "NEWS", BONE), 2, 52),
+			stacked(textButton("Events", UDim2.new(), "EVENTS", BONE), 3, 52),
+		}),
+	})
+end
+
+local function modeTemplates()
+	return {
+		hubTileTemplate(),
+		modeCardTemplate(),
+		sessionRowTemplate(),
+		readoutTemplate(),
+		teamHeaderTemplate(),
+		slotTemplate(),
+		sectionHeadingTemplate(),
+		settingRowTemplate(),
+		teamEditTemplate(),
+		swatchTemplate(),
+		mapTilesTemplate(),
+		mapTileTemplate(),
+		playerRowTemplate(),
+		dropdownItemTemplate(),
+	}
+end
+
 ----
 
 local existing = replicatedFirst:FindFirstChild("Lobby")
+
+-- a partial rebuild: swap in the private-server pieces and leave the rest of
+-- the gui, hand edits included, alone
+if REBUILD_ONLY then
+	assert(existing, "REBUILD_ONLY needs a built Lobby; run once with it nil first")
+
+	local stage = existing.Stage
+	local only = {}
+
+	for _, part in REBUILD_ONLY do
+		only[part] = true
+	end
+
+	local function swap(parent, objects)
+		for _, object in objects do
+			local old = parent:FindFirstChild(object.Name)
+
+			if old then
+				old:Destroy()
+			end
+
+			object.Parent = parent
+		end
+	end
+
+	if only.ModeView then
+		swap(stage, { buildModeView() })
+	end
+
+	if only.Dropdown then
+		swap(stage, { buildDropdown(), buildDropdownShield() })
+	end
+
+	-- siblings with the same ZIndex draw in child order, so these go back to
+	-- the end in the full build's order: over the screens
+	for _, name in { "Status", "Dropdown", "DropdownShield" } do
+		local object = stage:FindFirstChild(name)
+
+		if object then
+			object.Parent = nil
+			object.Parent = stage
+		end
+	end
+
+	if only.Templates then
+		swap(existing.Templates, modeTemplates())
+	end
+
+	print("Lobby UI rebuilt: " .. table.concat(REBUILD_ONLY, ", "))
+
+	return
+end
 
 -- keep the place's own backdrop; it's art-directed in Studio
 local keptBackground = existing and existing:FindFirstChild("Background")
@@ -1374,6 +2331,7 @@ make("ScreenGui", {
 
 		buildPicker(),
 		buildMapView(),
+		buildModeView(),
 
 		text("Status", {
 			AnchorPoint = Vector2.new(0.5, 1),
@@ -1386,6 +2344,9 @@ make("ScreenGui", {
 			TextColor3 = BONE,
 			Text = "",
 		}, 2),
+
+		buildDropdown(),
+		buildDropdownShield(),
 	}),
 
 	-- a Folder doesn't stop its GuiObjects rendering, so the templates are
@@ -1405,6 +2366,8 @@ make("ScreenGui", {
 
 			return object
 		end)(),
+
+		modeTemplates(),
 	}),
 })
 

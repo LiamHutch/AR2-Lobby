@@ -2,6 +2,7 @@ local playersService = game:GetService("Players")
 
 local directory = require(script.Parent.Directory)
 local teleports = require(script.Parent.Teleports)
+local sessions = require(script.Parent.Sessions)
 local vipForward = require(script.Parent.VipForward)
 
 -- the lobby is UI only, so no one ever gets a character. CharacterAutoLoads
@@ -25,4 +26,5 @@ end
 if not vipForward:Start(directory) then
 	directory:Start()
 	teleports:Start(directory)
+	sessions:Start(directory)
 end

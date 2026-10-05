@@ -27,6 +27,7 @@ local names = require(replicatedStorage.Shared.Names)
 local platform = require(replicatedStorage.Shared.Platform)
 local slideshow = require(script.Slideshow)
 local loading = require(script.Loading)
+local privateModule = require(script.Private)
 
 local remotes = replicatedStorage.Remotes
 
@@ -133,6 +134,8 @@ local cards = {}
 local rows = {} -- [jobId] = row
 
 local openMap = nil
+-- the private server pages, made once the helpers exist (see privateModule)
+local privateView = nil
 local selectedId = nil
 local sortMode = "players"
 local poolOnly = false
@@ -1003,6 +1006,10 @@ local function syncMaps(list)
 		drawCard(map)
 	end
 
+	if privateView then
+		privateView.SyncCards(#maps)
+	end
+
 	if openMap then
 		if mapsByKey[openMap.Key] then
 			openMap = mapsByKey[openMap.Key]
@@ -1164,6 +1171,50 @@ end
 
 edgeFade(cardRow)
 edgeFade(serverList)
+
+-- the private server pages (Tourney, Free Roam): tiles after the maps and
+-- their own view. Needs the place's ModeView and templates; an older place
+-- without them just shows the maps
+if stage:FindFirstChild("ModeView") and templates:FindFirstChild("ModeCard") then
+	privateView = privateModule({
+		gui = gui,
+		stage = stage,
+		templates = templates,
+		cardRow = cardRow,
+		remotes = remotes,
+		slideshow = slideshow,
+		loading = loading,
+		here = here,
+		spaced = spaced,
+		setText = setText,
+		clear = clear,
+		bindButton = bindButton,
+		setEnabled = setEnabled,
+		playSound = playSound,
+		drawChips = drawChips,
+		drawTags = drawTags,
+		hexColor = hexColor,
+		count = count,
+		setStatus = setStatus,
+		isJoining = function()
+			return joining
+		end,
+		edgeFade = edgeFade,
+		openMode = function(key)
+			if openMap or joining then
+				return
+			end
+
+			privateView.Open(key)
+			picker.Visible = false
+		end,
+		onClosed = function()
+			picker.Visible = true
+		end,
+	})
+else
+	warn("Lobby UI has no ModeView; run tools/build-ui.lua for the private server pages")
+end
 safeArea:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 safeArea:GetPropertyChangedSignal("AbsolutePosition"):Connect(fit)
 pcall(function()
@@ -1293,8 +1344,12 @@ end
 drawSorts()
 
 contextActionService:BindAction("LobbyBack", function(_, state)
-	if state == Enum.UserInputState.Begin and openMap then
-		closeMapView()
+	if state == Enum.UserInputState.Begin then
+		if openMap then
+			closeMapView()
+		elseif privateView then
+			privateView.Back()
+		end
 	end
 
 	return Enum.ContextActionResult.Pass
@@ -1315,8 +1370,14 @@ end
 local function drawForwarding()
 	local on = forwarding()
 
-	picker.Visible = not on and openMap == nil
+	local modeOpen = privateView ~= nil and privateView.IsOpen()
+
+	picker.Visible = not on and openMap == nil and not modeOpen
 	mapView.Visible = not on and openMap ~= nil
+
+	if privateView then
+		stage.ModeView.Visible = not on and modeOpen
+	end
 
 	if on then
 		setStatus("joining")
@@ -1341,6 +1402,10 @@ replicatedStorage:GetAttributeChangedSignal("VipForward"):Connect(reportPlatform
 
 remotes.Status.OnClientEvent:Connect(function(code, title)
 	setStatus(code)
+
+	if privateView then
+		privateView.OnStatus(code)
+	end
 
 	if code == "teleporting" then
 		loading.Show(title)

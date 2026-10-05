@@ -20,7 +20,8 @@
 				"Directory": { "$className": "RemoteEvent" },
 				"Play": { "$className": "RemoteEvent" },
 				"Platform": { "$className": "RemoteEvent" },
-				"Status": { "$className": "RemoteEvent" }
+				"Status": { "$className": "RemoteEvent" },
+				"Private": { "$className": "RemoteEvent" }
 			}
 		},
 

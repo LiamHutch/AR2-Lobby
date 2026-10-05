@@ -104,6 +104,11 @@ local function buildOptions(map, placeId, jobId, server, slot, pool)
 	return options
 end
 
+-- rounds of TeleportAsync a group gets, GROUP_RETRY seconds apart, for
+-- whoever is still here after each
+local GROUP_ROUNDS = 4
+local GROUP_RETRY = 30
+
 local function lockedServerFull(directory, map)
 	local bucket = directory.Snapshot[map.Key]
 	local server = bucket and bucket.Servers[1]
@@ -294,6 +299,127 @@ local function onPlay(directory, client, mapKey, jobId, password, pool, device)
 end
 
 ----
+
+-- a status code for a join refused before any teleport
+function library:Refuse(client, code)
+	sendStatus(client, code)
+end
+
+-- sends one player to a private server on `placeId` with the options given
+-- (Sessions: a free roam server, a match to rejoin). `prepare` runs once the
+-- teleport is claimed, for the ticket a reserved server checks on arrival;
+-- returning false aborts with "failed". Returns false if a teleport is already
+-- in flight for them
+function library:SendPrivate(client, placeId, options, title, prepare)
+	if pending[client] or not placeId then
+		return false
+	end
+
+	local token = { attempt = 1 }
+	pending[client] = token
+
+	local function refuse(code)
+		clearPending(client, token)
+		sendStatus(client, code)
+	end
+
+	sendStatus(client, "joining")
+
+	task.spawn(function()
+		if prepare and not prepare() then
+			return refuse("failed")
+		end
+
+		-- without a grant the test place's lock would kick them on arrival
+		if catalog.IsTest and not writeGrant(client, placeId) then
+			return refuse("failed")
+		end
+
+		if not tryTeleport(client, placeId, options) then
+			return refuse("failed")
+		end
+
+		sendStatus(client, "teleporting", title)
+
+		task.delay(PENDING_TIMEOUT, function()
+			if pending[client] == token and client.Parent then
+				clearPending(client, token)
+				sendStatus(client, "failed")
+			end
+		end)
+	end)
+
+	return true
+end
+
+-- sends a group to one reserved server together (a tourney's rosters): one
+-- TeleportAsync for everyone, tried again for whoever is still here. Yields
+-- until the group has gone or it gives up; true if anyone was sent
+function library:SendGroup(clients, placeId, options, title)
+	local token = { attempt = 0 }
+	local list = {}
+
+	for _, client in clients do
+		if not pending[client] and client.Parent then
+			pending[client] = token
+			table.insert(list, client)
+			sendStatus(client, "joining")
+		end
+	end
+
+	if #list == 0 or not placeId then
+		return false
+	end
+
+	local sent = false
+
+	for round = 1, GROUP_ROUNDS do
+		local here = {}
+
+		for _, client in list do
+			if client.Parent then
+				table.insert(here, client)
+			end
+		end
+
+		if #here == 0 then
+			break
+		end
+
+		if catalog.IsTest then
+			for _, client in here do
+				writeGrant(client, placeId)
+			end
+		end
+
+		token.attempt = round
+
+		local worked, why = pcall(teleportService.TeleportAsync, teleportService, placeId, here, options)
+
+		for _, client in here do
+			sendStatus(client, worked and "teleporting" or "failed", title)
+		end
+
+		if worked then
+			sent = true
+		else
+			warn("Lobby group teleport attempt", round, "failed:", why)
+		end
+
+		-- Studio can't teleport; one try shows the flow
+		if runService:IsStudio() then
+			break
+		end
+
+		task.wait(GROUP_RETRY)
+	end
+
+	for _, client in list do
+		clearPending(client, token)
+	end
+
+	return sent
+end
 
 function library:Start(directory)
 	remotes.Play.OnServerEvent:Connect(function(client, mapKey, jobId, password, pool, device)
