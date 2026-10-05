@@ -1,8 +1,8 @@
 -- Builds ReplicatedFirst.Lobby in the open place. Paste into the Studio command bar.
 -- Destroys and rebuilds Lobby if it exists; hand edits made in Studio are lost,
 -- except Lobby.Background, which is kept as is (it's the game's menu backdrop,
--- art-directed in Studio). REBUILD_ONLY below swaps in just the private-server
--- pieces (ModeView, Dropdown, their templates) and keeps everything else.
+-- art-directed in Studio). REBUILD_ONLY below swaps in just the named pieces
+-- (Picker, ModeView, Dropdown, Invite, Templates) and keeps everything else.
 --
 -- Styling copies the game's main menu (ReplicatedStorage.Interface.MainMenu.Master
 -- in the game place, mostly VIPHome.FreeroamWindow): Oswald Heavy headers,
@@ -18,10 +18,11 @@
 
 local replicatedFirst = game:GetService("ReplicatedFirst")
 
--- nil rebuilds everything. { "ModeView", "Dropdown", "Invite", "Templates" } keeps the
--- Lobby that's there and only replaces Stage.ModeView, Stage.Dropdown (and
--- its shield) and the private-server templates, so hand edits elsewhere
--- survive; drop a name to leave that part alone too
+-- nil rebuilds everything. { "Picker", "ModeView", "Dropdown", "Invite", "Templates" }
+-- keeps the Lobby that's there and only replaces Stage.Picker, Stage.ModeView,
+-- Stage.Dropdown (and its shield), Stage.Invite and the private-server
+-- templates, so hand edits elsewhere survive; drop a name to leave that part
+-- alone too
 local REBUILD_ONLY = nil
 
 local OSWALD = "rbxassetid://12187372847"
@@ -45,6 +46,9 @@ local GRUNGE = "rbxassetid://104544475726279"
 local TORN_EDGE = "rbxassetid://129891927624984"
 local BACK_ICON = "rbxassetid://90333380641559"
 local TOGGLE_ICON = "rbxassetid://5912368763" -- the host's settings/teams switch
+-- the game's loading-screen logo, 892x292; its drop shadow is baked into
+-- the asset, a UIShadow blurs badly on it
+local LOGO = "rbxassetid://81852070951145"
 
 local STAGE = Vector2.new(1440, 810)
 
@@ -554,28 +558,29 @@ end
 ----
 
 local function buildPicker()
+	-- the bottom screen: under MapView and ModeView whatever the child order
 	return make("Frame", {
 		Name = "Picker",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
+		ZIndex = 0,
 	}, {
-		-- top right, well away from Roblox's buttons in the top-left corner
-		text("Heading", {
+		-- the game's logo, top right, well away from Roblox's buttons in the
+		-- top-left corner
+		make("ImageLabel", {
+			Name = "Logo",
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -64, 0, 20),
-			Size = UDim2.fromOffset(600, 50),
-		}, {
-			FontFace = font(Enum.FontWeight.Heavy),
-			TextSize = 44,
-			TextColor3 = BONE,
-			TextXAlignment = Enum.TextXAlignment.Right,
-			Text = spaced("Experiences"),
-		}, 4),
+			Size = UDim2.fromOffset(244, 80),
+			BackgroundTransparency = 1,
+			Image = LOGO,
+			ScaleType = Enum.ScaleType.Fit,
+		}),
 
 		edgeFade({
 			AnchorPoint = Vector2.new(0, 0.5),
 			Position = UDim2.new(0, 0, 0.5, 20),
-			Size = UDim2.new(1, 0, 0, 700),
+			Size = UDim2.new(1, 0, 0, 560),
 		}, make("ScrollingFrame", {
 			Name = "Maps",
 			BackgroundTransparency = 1,
@@ -593,7 +598,7 @@ local function buildPicker()
 		}, {
 			-- left-aligned: the client centres the row with the padding while
 			-- it fits (centring here would push overflowing cards out of reach)
-			list(Enum.FillDirection.Horizontal, 36, {
+			list(Enum.FillDirection.Horizontal, 27, {
 				VerticalAlignment = Enum.VerticalAlignment.Center,
 			}),
 
@@ -1442,7 +1447,7 @@ end
 local function cardTemplate()
 	return make("Frame", {
 		Name = "MapCard",
-		Size = UDim2.fromOffset(540, 640),
+		Size = UDim2.fromOffset(405, 480),
 		BackgroundColor3 = PANEL,
 		BorderSizePixel = 0,
 		Visible = false,
@@ -1480,7 +1485,7 @@ local function cardTemplate()
 		}),
 
 		(function()
-			local object = text("Title", { Position = UDim2.new(0, 28, 1, -196), Size = UDim2.new(1, -56, 0, 62), ZIndex = 2 }, {
+			local object = text("Title", { Position = UDim2.new(0, 21, 1, -170), Size = UDim2.new(1, -42, 0, 46), ZIndex = 2 }, {
 				FontFace = font(Enum.FontWeight.Heavy),
 				TextScaled = true,
 				TextColor3 = BONE,
@@ -1495,9 +1500,9 @@ local function cardTemplate()
 			return object
 		end)(),
 
-		text("Online", { Position = UDim2.new(0, 28, 1, -130), Size = UDim2.new(1, -56, 0, 34), ZIndex = 2 }, {
+		text("Online", { Position = UDim2.new(0, 21, 1, -114), Size = UDim2.new(1, -42, 0, 26), ZIndex = 2 }, {
 			FontFace = font(Enum.FontWeight.SemiBold, Enum.FontStyle.Italic),
-			TextSize = 29,
+			TextSize = 22,
 			TextColor3 = GREY,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Text = "",
@@ -1506,8 +1511,8 @@ local function cardTemplate()
 		-- the map's Tags, filled from Templates.Tag
 		make("Frame", {
 			Name = "Tags",
-			Position = UDim2.new(0, 28, 1, -86),
-			Size = UDim2.new(1, -56, 0, 24),
+			Position = UDim2.new(0, 21, 1, -80),
+			Size = UDim2.new(1, -42, 0, 24),
 			BackgroundTransparency = 1,
 			ZIndex = 3,
 		}, {
@@ -1516,12 +1521,14 @@ local function cardTemplate()
 
 		make("Frame", {
 			Name = "Platforms",
-			Position = UDim2.new(0, 28, 1, -52),
-			Size = UDim2.new(1, -56, 0, 26),
+			Position = UDim2.new(0, 21, 1, -46),
+			Size = UDim2.new(1, -42, 0, 26),
 			BackgroundTransparency = 1,
 			ZIndex = 3,
 		}, {
 			list(Enum.FillDirection.Horizontal, 8),
+			-- the shared chips, drawn a little smaller so five clear Play
+			make("UIScale", { Scale = 0.85 }),
 		}),
 
 		make("Frame", {
@@ -1562,9 +1569,9 @@ local function cardTemplate()
 
 		-- one tap into a game, over the card's own hitbox
 		(function()
-			local object = textButton("Play", UDim2.fromOffset(168, 60), "PLAY", BONE)
+			local object = textButton("Play", UDim2.fromOffset(126, 45), "PLAY", BONE)
 			object.AnchorPoint = Vector2.new(1, 1)
-			object.Position = UDim2.new(1, -28, 1, -26)
+			object.Position = UDim2.new(1, -21, 1, -20)
 			object.ZIndex = 11
 			object.Visible = false
 
@@ -1696,27 +1703,27 @@ end
 local function modeCardTemplate()
 	local object = cardTemplate()
 	object.Name = "ModeCard"
-	object.Size = UDim2.fromOffset(320, 640)
+	object.Size = UDim2.fromOffset(240, 480)
 	object.Play:Destroy()
 
 	local function place(child, y, height)
-		child.Position = UDim2.new(0, 24, 1, y)
-		child.Size = UDim2.new(1, -48, 0, height)
+		child.Position = UDim2.new(0, 18, 1, y)
+		child.Size = UDim2.new(1, -36, 0, height)
 	end
 
-	place(object.Title, -196, 52)
-	place(object.Online, -130, 30)
-	place(object.Tags, -86, 24)
-	place(object.Platforms, -52, 26)
-	object.Online.Text.TextSize = 26
-	object.Online.Shadow.TextSize = 26
+	place(object.Title, -170, 39)
+	place(object.Online, -114, 23)
+	place(object.Tags, -80, 24)
+	place(object.Platforms, -46, 26)
+	object.Online.Text.TextSize = 20
+	object.Online.Shadow.TextSize = 20
 
 	-- the client sets Image; after Clip so it draws over the Fade
 	make("ImageLabel", {
 		Name = "Icon",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.42),
-		Size = UDim2.fromOffset(220, 220),
+		Size = UDim2.fromOffset(165, 165),
 		BackgroundTransparency = 1,
 		Image = "",
 		ImageColor3 = BONE,
@@ -2237,10 +2244,6 @@ end
 -- the hub tile at the front of the row: no backdrop, the game's logo
 -- floating over the background and a stack of buttons at the bottom, level
 -- with the map cards' Play
--- the game's loading-screen logo, 892x292; its drop shadow is baked into
--- the asset, a UIShadow blurs badly on it
-local LOGO = "rbxassetid://81852070951145"
-
 local function hubTileTemplate()
 	local function stacked(object, order, height)
 		object.LayoutOrder = order
@@ -2249,33 +2252,24 @@ local function hubTileTemplate()
 		return object
 	end
 
+	-- the buttons sit on the cards' bottom edge; the logo is the picker's
 	return make("Frame", {
 		Name = "HubTile",
-		Size = UDim2.fromOffset(320, 640),
+		Size = UDim2.fromOffset(240, 480),
 		BackgroundTransparency = 1,
 		Visible = false,
 	}, {
-		make("ImageLabel", {
-			Name = "Logo",
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 150),
-			Size = UDim2.fromOffset(300, 98),
-			BackgroundTransparency = 1,
-			Image = LOGO,
-			ScaleType = Enum.ScaleType.Fit,
-		}),
-
 		make("Frame", {
 			Name = "Buttons",
 			AnchorPoint = Vector2.new(0, 1),
-			Position = UDim2.new(0, 0, 1, -26),
-			Size = UDim2.new(1, 0, 0, 188),
+			Position = UDim2.new(0, 0, 1, -20),
+			Size = UDim2.new(1, 0, 0, 141),
 			BackgroundTransparency = 1,
 		}, {
-			list(Enum.FillDirection.Vertical, 12, { VerticalAlignment = Enum.VerticalAlignment.Bottom }),
-			stacked(textButton("Friends", UDim2.new(), "FIND FRIENDS", PLAY_GOLD), 1, 60),
-			stacked(textButton("News", UDim2.new(), "NEWS", BONE), 2, 52),
-			stacked(textButton("Events", UDim2.new(), "EVENTS", BONE), 3, 52),
+			list(Enum.FillDirection.Vertical, 9, { VerticalAlignment = Enum.VerticalAlignment.Bottom }),
+			stacked(textButton("Friends", UDim2.new(), "FIND FRIENDS", PLAY_GOLD), 1, 45),
+			stacked(textButton("News", UDim2.new(), "NEWS", BONE), 2, 39),
+			stacked(textButton("Events", UDim2.new(), "EVENTS", BONE), 3, 39),
 		}),
 	})
 end
@@ -2327,6 +2321,10 @@ if REBUILD_ONLY then
 		end
 	end
 
+	if only.Picker then
+		swap(stage, { buildPicker() })
+	end
+
 	if only.ModeView then
 		swap(stage, { buildModeView() })
 	end
@@ -2350,7 +2348,9 @@ if REBUILD_ONLY then
 		end
 	end
 
+	-- the map card too: the mode card is built from it
 	if only.Templates then
+		swap(existing.Templates, { cardTemplate() })
 		swap(existing.Templates, modeTemplates())
 	end
 
