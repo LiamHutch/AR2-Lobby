@@ -164,6 +164,16 @@ return {
 	FREEROAM_CONFIGS_STORE = "Freeroam Configs - 4",
 	FREEROAM_LOBBIES_MAP = "Freeroam Lobbies - 4",
 
+	-- lobby-to-lobby invites (Invites.lua): one MessagingService topic every
+	-- lobby server subscribes to; a message is
+	--   { to, from, fromName, key, jobId, placeId, at }
+	-- and the server holding `to` shows them the invite. INVITE_TTL seconds is
+	-- how long an invite stays accepted and how long a private session stays
+	-- visible to the invitee; INVITE_GAP the seconds between a host's invites
+	INVITE_TOPIC = "LobbyInvites1",
+	INVITE_TTL = 120,
+	INVITE_GAP = 5,
+
 	-- the game's Return To Lobby button sends players here with
 	-- { source = GAME_SOURCE, v = 1, placeId, mode? }; mode names the page to
 	-- open on arrival ("Tourney" / "Freeroam"). Game: HubProtocol.GAME_SOURCE

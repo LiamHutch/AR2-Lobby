@@ -245,7 +245,7 @@ function library:ArrivedFor(client)
 	end
 
 	if data.source == protocol.SOURCE and tonumber(data.followId) then
-		return { followId = tonumber(data.followId) }
+		return { followId = tonumber(data.followId), mode = private.ByKey[data.mode] and data.mode or nil }
 	end
 
 	if data.source == protocol.GAME_SOURCE and private.ByKey[data.mode] then

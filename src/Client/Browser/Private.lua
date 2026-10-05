@@ -91,8 +91,15 @@ return function(context)
 	-- seconds between friend list refreshes while the page is open
 	local FRIENDS_REFRESH = 30
 
-	-- a friend whose JOIN sent us here; opened once their lobby shows up
+	-- a friend whose JOIN or invite sent us here: { HostId, Key }, opened once
+	-- their session shows up in the list
 	local pendingFollow = nil
+
+	-- the mode key of the session being invited to, while the Friends page is
+	-- open in invite mode
+	local inviting = nil
+
+	local inviteToken = 0
 
 	local openMode = nil
 	-- "list" | "roster" | "config" | "server"
@@ -392,6 +399,7 @@ return function(context)
 		if not row then
 			setText(footer.ServerName, "")
 			setText(footer.Meta, "")
+			setText(footer.Join.Label, (openMode.Client and (inviting and "INVITE" or "JOIN")) or (openMode.Key == "Tourney" and "OPEN" or "JOIN"))
 			setEnabled(footer.Join, false)
 
 			return
@@ -402,7 +410,7 @@ return function(context)
 		if openMode.Client then
 			setText(footer.ServerName, row.Host:upper())
 			setText(footer.Meta, row.Detail)
-			setText(footer.Join.Label, "JOIN")
+			setText(footer.Join.Label, inviting and "INVITE" or "JOIN")
 			setEnabled(footer.Join, row.Joinable == true and not isJoining())
 
 			return
@@ -1128,8 +1136,8 @@ return function(context)
 
 		table.clear(lobbyRows)
 
-		setText(lobbies.Heading, spaced(mode.Heading or ""))
-		setText(lobbies.Empty, spaced(mode.Empty or ""))
+		setText(lobbies.Heading, spaced(mode.Key == "Friends" and inviting and "Invite" or mode.Heading or ""))
+		setText(lobbies.Empty, spaced(mode.Key == "Friends" and inviting and "No friends in the lobby" or mode.Empty or ""))
 		lobbies.Filters.Open.Label.Text = mode.Key == "Freeroam" and "RUNNING" or "OPEN"
 		lobbies.Search.Input.Text = ""
 		drawColumns(mode)
@@ -1172,6 +1180,7 @@ return function(context)
 			remote:FireServer("close")
 		end
 
+		inviting = nil
 		openMode = nil
 		state = nil
 		view.Visible = false
@@ -1206,7 +1215,11 @@ return function(context)
 			return
 		end
 
-		if openMode.Key == "Friends" then
+		if openMode.Key == "Friends" and inviting then
+			remote:FireServer("invite", inviting, selectedHostId)
+			setText(footer.Meta, "Sending the invite…")
+			setEnabled(footer.Join, false)
+		elseif openMode.Key == "Friends" then
 			setStatus("joining")
 			loading.Prepare(openMode.Name)
 			remote:FireServer("follow", selectedHostId)
@@ -1349,6 +1362,51 @@ return function(context)
 
 	----
 
+	-- the invite toast (Stage.Invite; an older place may not have it)
+	local toast = stage:FindFirstChild("Invite")
+
+	function library.ShowInvite(info)
+		if not toast or type(info) ~= "table" then
+			return
+		end
+
+		inviteToken += 1
+
+		local token = inviteToken
+		local what = info.Key == "Tourney" and "tourney lobby" or "free roam server"
+
+		setText(toast.Text, string.format("%s invited you to their %s", tostring(info.FromName), what))
+		toast.Visible = true
+
+		toast:SetAttribute("Id", info.Id)
+
+		task.delay(30, function()
+			if inviteToken == token then
+				toast.Visible = false
+			end
+		end)
+	end
+
+	if toast then
+		bindChip(toast.Accept, function()
+			local id = toast:GetAttribute("Id")
+			toast.Visible = false
+
+			if id then
+				remote:FireServer("accept", id)
+			end
+		end)
+
+		bindChip(toast.Dismiss, function()
+			local id = toast:GetAttribute("Id")
+			toast.Visible = false
+
+			if id then
+				remote:FireServer("decline", id)
+			end
+		end)
+	end
+
 	remote.OnClientEvent:Connect(function(message, ...)
 		if message == "list" then
 			local key, list, ownRow = ...
@@ -1360,9 +1418,9 @@ return function(context)
 					drawList()
 				end
 
-				if pendingFollow and key == "Tourney" and panel == "list" then
+				if pendingFollow and key == pendingFollow.Key and panel == "list" then
 					for _, row in rows do
-						if row.HostId == pendingFollow then
+						if row.HostId == pendingFollow.HostId then
 							pendingFollow = nil
 							viewSession(row.HostId)
 
@@ -1391,6 +1449,9 @@ return function(context)
 				rows = {}
 
 				for _, friend in incoming or {} do
+					-- inviting: only friends in a lobby server can be asked over
+					local can = if inviting then friend.Where == "LOBBY" else friend.Joinable == true
+
 					table.insert(rows, {
 						HostId = friend.UserId,
 						Host = friend.Name,
@@ -1399,9 +1460,9 @@ return function(context)
 						AccessColor = friend.Where == "LOBBY" and GOLD or nil,
 						Players = friend.Players,
 						Max = friend.Max,
-						PlayersText = friend.Players and string.format("%d / %d", friend.Players, friend.Max) or (friend.Joinable and "" or "—"),
-						Full = not friend.Joinable,
-						Joinable = friend.Joinable,
+						PlayersText = friend.Players and string.format("%d / %d", friend.Players, friend.Max) or (can and "" or "—"),
+						Full = not can,
+						Joinable = can,
 					})
 				end
 
@@ -1417,11 +1478,27 @@ return function(context)
 				context.openMode(key)
 			end
 		elseif message == "follow" then
-			-- a friend's JOIN sent us here: open their lobby once it's listed
-			pendingFollow = ...
+			-- a friend's JOIN or invite: open their session once it's listed
+			local hostId, key = ...
+			key = private.ByKey[key] and key or "Tourney"
+			pendingFollow = { HostId = hostId, Key = key }
+
+			if openMode and openMode.Key ~= key then
+				library.Close()
+			end
 
 			if not openMode then
-				context.openMode("Tourney")
+				context.openMode(key)
+			elseif panel == "list" then
+				drawList()
+			end
+		elseif message == "invite" then
+			library.ShowInvite(...)
+		elseif message == "invited" then
+			local userId, sent, code = ...
+
+			if openMode and openMode.Key == "Friends" and inviting then
+				setText(footer.Meta, sent and "Invite sent" or (code == "slow" and "Too many invites, wait a moment" or "Couldn't send the invite"))
 			end
 		elseif message == "rejoin" then
 			rejoin = ...
@@ -1499,11 +1576,22 @@ return function(context)
 		end
 	end
 
+	-- INVITE on your own session: pick a friend in a lobby server to ask over
 	local invite = info.Visibility:FindFirstChild("Invite")
 
 	if invite then
-		bindChip(invite, promptInvite)
+		bindChip(invite, function()
+			if not openMode or not state or not state.Mine then
+				return
+			end
+
+			local key = openMode.Key
+			library.Close()
+			inviting = key
+			context.openMode("Friends")
+		end)
 	end
+
 
 	-- a friend's JOIN may have sent us here
 	remote:FireServer("ready")

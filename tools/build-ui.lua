@@ -18,7 +18,7 @@
 
 local replicatedFirst = game:GetService("ReplicatedFirst")
 
--- nil rebuilds everything. { "ModeView", "Dropdown", "Templates" } keeps the
+-- nil rebuilds everything. { "ModeView", "Dropdown", "Invite", "Templates" } keeps the
 -- Lobby that's there and only replaces Stage.ModeView, Stage.Dropdown (and
 -- its shield) and the private-server templates, so hand edits elsewhere
 -- survive; drop a name to leave that part alone too
@@ -1266,6 +1266,63 @@ end
 
 -- a clear button over the whole stage, just under the dropdown: pressing
 -- anywhere else closes it
+-- an invite from a friend in another (or this) lobby server, above the
+-- status line: who and to what, with accept and dismiss
+local function buildInvite()
+	return make("Frame", {
+		Name = "Invite",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -56),
+		Size = UDim2.fromOffset(560, 64),
+		BackgroundColor3 = NAV,
+		BackgroundTransparency = 0.15,
+		BorderSizePixel = 0,
+		Visible = false,
+		ZIndex = 40,
+	}, {
+		make("UIStroke", {
+			Name = "Stroke",
+			Color = GOLD,
+			Transparency = 0.4,
+			Thickness = 2,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
+		lift(true),
+
+		text("Text", { Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -236, 1, 0), ZIndex = 41 }, {
+			FontFace = font(Enum.FontWeight.Medium, Enum.FontStyle.Italic),
+			TextSize = 20,
+			TextColor3 = BONE,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = "",
+		}, 2),
+
+		(function()
+			local chip = sortChip("Accept", "ACCEPT", 1, 100)
+			chip.AnchorPoint = Vector2.new(1, 0.5)
+			chip.Position = UDim2.new(1, -120, 0.5, 0)
+			chip.ZIndex = 41
+			chip.Stroke.Color = GOLD
+			chip.Stroke.Transparency = 0.3
+			chip.Label.TextColor3 = GOLD
+			chip.Label.TextTransparency = 0
+
+			return chip
+		end)(),
+
+		(function()
+			local chip = sortChip("Dismiss", "DISMISS", 2, 100)
+			chip.AnchorPoint = Vector2.new(1, 0.5)
+			chip.Position = UDim2.new(1, -12, 0.5, 0)
+			chip.ZIndex = 41
+
+			return chip
+		end)(),
+	})
+end
+
 local function buildDropdownShield()
 	return make("ImageButton", {
 		Name = "DropdownShield",
@@ -2277,9 +2334,13 @@ if REBUILD_ONLY then
 		swap(stage, { buildDropdown(), buildDropdownShield() })
 	end
 
+	if only.Invite then
+		swap(stage, { buildInvite() })
+	end
+
 	-- siblings with the same ZIndex draw in child order, so these go back to
 	-- the end in the full build's order: over the screens
-	for _, name in { "Status", "Dropdown", "DropdownShield" } do
+	for _, name in { "Status", "Invite", "Dropdown", "DropdownShield" } do
 		local object = stage:FindFirstChild(name)
 
 		if object then
@@ -2344,6 +2405,8 @@ make("ScreenGui", {
 			TextColor3 = BONE,
 			Text = "",
 		}, 2),
+
+		buildInvite(),
 
 		buildDropdown(),
 		buildDropdownShield(),

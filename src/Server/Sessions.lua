@@ -16,6 +16,8 @@
 --   "rejoin"             back into a live match (Tourney.Rejoin)
 --   "friends", entries   what the client's GetFriendsOnlineAsync returned;
 --                        answered with where they are (Friends.lua)
+--   "invite", key, userId   invite a friend to the session you host (Invites.lua)
+--   "accept", id / "decline", id   answer an invite
 --   "follow", userId     go to that friend's server
 --   "ready"              the client is up: told who to open if a friend's
 --                        JOIN sent them here, or which page if the game's
@@ -31,7 +33,10 @@
 --                               sessions, for the tiles; live = which modes
 --                               have a place in this universe
 --   "friends", rows             Friends.lua rows
---   "follow", userId            open this friend's session (they sent you)
+--   "follow", userId, key?      open this friend's session (they sent you or
+--                               invited you); key says which mode
+--   "invite", info              an invite: { Id, From, FromName, Key, Same }
+--   "invited", userId, sent, code   the answer to an "invite" 
 --   "open", key                 open this mode's page (back from that game mode)
 --
 -- Visibility: a private session is listed only to its host and the players
@@ -48,6 +53,7 @@ local tourney = require(script.Parent.Tourney)
 local freeroam = require(script.Parent.Freeroam)
 local teleports = require(script.Parent.Teleports)
 local friendsLibrary = require(script.Parent.Friends)
+local invites = require(script.Parent.Invites)
 
 local remote = replicatedStorage.Remotes.Private
 
@@ -143,8 +149,13 @@ local function loadFriends(client)
 	end)
 end
 
-local function canSee(client, session)
+local function canSee(client, session, key)
 	if session:IsHost(client) or session:IsMember(client) then
+		return true
+	end
+
+	-- an invite from the host opens a private session to them for a while
+	if invites:IsInvited(key, session.HostId, client.UserId) then
 		return true
 	end
 
@@ -188,7 +199,7 @@ function sendList(client, key)
 	local own = nil
 
 	for hostId, session in sessions[key] do
-		if canSee(client, session) then
+		if canSee(client, session, key) then
 			local row = session:Row(client)
 			row.Friend = not row.Mine and isFriend(client, hostId)
 
@@ -289,7 +300,7 @@ local function sendState(client)
 
 	local session = sessions[view.Key][view.HostId]
 
-	if session and canSee(client, session) then
+	if session and canSee(client, session, view.Key) then
 		remote:FireClient(client, "state", view.Key, view.HostId, session:State(client))
 	else
 		remote:FireClient(client, "state", view.Key, view.HostId, nil)
@@ -429,7 +440,7 @@ function handlers.act(client, key, hostId, action, ...)
 
 	local session = sessions[key][hostId]
 
-	if not session or not canSee(client, session) then
+	if not session or not canSee(client, session, key) then
 		return
 	end
 
@@ -474,9 +485,37 @@ function handlers.ready(client)
 	end
 
 	if arrival.followId then
-		remote:FireClient(client, "follow", arrival.followId)
+		remote:FireClient(client, "follow", arrival.followId, arrival.mode)
 	elseif arrival.mode then
 		remote:FireClient(client, "open", arrival.mode)
+	end
+end
+
+-- a host invites a friend (by user id, from the Friends page) to the session
+-- they host in this server
+function handlers.invite(client, key, userId)
+	local session = CLASSES[key] and sessions[key][client.UserId]
+
+	if not session then
+		return
+	end
+
+	local sent, code = invites:Send(client, key, userId)
+
+	if client.Parent then
+		remote:FireClient(client, "invited", userId, sent, code)
+	end
+end
+
+function handlers.accept(client, id)
+	if type(id) == "string" then
+		invites:Accept(client, id)
+	end
+end
+
+function handlers.decline(client, id)
+	if type(id) == "string" then
+		invites:Decline(client, id)
 	end
 end
 
@@ -519,10 +558,18 @@ local function onLeave(client)
 	rejoinLooked[client] = nil
 	creating[client] = nil
 	friendsLibrary:Forget(client)
+	invites:Forget(client)
 end
 
 function library:Start(directory)
 	friendsLibrary:Start(directory)
+
+	-- an invite accepted in the host's own server: open their page here
+	invites:Start(function(client, hostId, key)
+		if client.Parent then
+			remote:FireClient(client, "follow", hostId, key)
+		end
+	end)
 
 	for _, mode in private.Modes do
 		places[mode.Key] = directory:PlaceFor(mode.PlaceIds)
