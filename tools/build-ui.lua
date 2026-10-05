@@ -1273,9 +1273,10 @@ local function buildInvite()
 		Name = "Invite",
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -56),
-		Size = UDim2.fromOffset(560, 64),
+		Size = UDim2.fromOffset(700, 64),
+		-- solid: it has to read over whatever's behind it
 		BackgroundColor3 = NAV,
-		BackgroundTransparency = 0.15,
+		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
 		Visible = false,
 		ZIndex = 40,
