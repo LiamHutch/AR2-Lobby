@@ -35,7 +35,8 @@
 --   "open", key                 open this mode's page (back from that game mode)
 --
 -- Visibility: a private session is listed only to its host and the players
--- already in it; friends to the host's friends; public to everyone. The
+-- already in it (a tourney lobby's rosters, a free roam server's co-hosts);
+-- friends to the host's friends; public to everyone. The
 -- lists are per player (friendship), so each is one FireClient.
 
 local playersService = game:GetService("Players")

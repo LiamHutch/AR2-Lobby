@@ -3,8 +3,8 @@
 -- made and driven by Sessions.lua.
 --
 -- The host's config is the lobby's own (Shared/Private.lua); the free roam
--- server reads it at boot and writes its in-game lock and ban changes back
--- (settings and bans only). A host from before the lobby owned the config is
+-- server reads it at boot and writes its in-game lock, co-host and ban
+-- changes back (settings, hosts and bans only). A host from before the lobby owned the config is
 -- seeded once from the old VIP lobby's record (FREEROAM_CONFIGS_STORE). The
 -- host's reserved server record (FREEROAM_SERVERS_STORE) stays: the game
 -- checks it on arrival to know whose server it is.
@@ -52,12 +52,15 @@ local function sanitizeConfig(raw)
 		v = protocol.PRIVATE_VERSION,
 		visibility = private:IsVisibility(raw.visibility) and raw.visibility or private.DefaultVisibility,
 		settings = private:Sanitize(MODE, raw.settings),
+		hosts = {},
 		bans = {},
 	}
 
-	for key, value in type(raw.bans) == "table" and raw.bans or {} do
-		if tonumber(key) and value then
-			config.bans[tostring(key)] = true
+	for _, field in { "hosts", "bans" } do
+		for key, value in type(raw[field]) == "table" and raw[field] or {} do
+			if tonumber(key) and value then
+				config[field][tostring(key)] = true
+			end
 		end
 	end
 
@@ -97,6 +100,7 @@ local function fromLegacy(record)
 
 	return {
 		settings = settings,
+		hosts = record.Hosts,
 		bans = record.Bans,
 	}
 end
@@ -157,8 +161,10 @@ function class.new(host, saved, sync, placeId)
 
 	live[self] = true
 
-	for userId in self.Config.bans do
-		nameOf(userId)
+	for _, field in { "hosts", "bans" } do
+		for userId in self.Config[field] do
+			nameOf(userId)
+		end
 	end
 
 	task.spawn(function()
@@ -241,8 +247,13 @@ function class:IsHost(client)
 	return client == self.Host
 end
 
+-- a co-host: in on a locked server and a private listing, like the host
+function class:IsCoHost(client)
+	return self.Config.hosts[tostring(client.UserId)] == true
+end
+
 function class:IsMember(client)
-	return false
+	return self:IsCoHost(client)
 end
 
 function class:Visibility()
@@ -275,16 +286,23 @@ function class:Row(viewer)
 	}
 end
 
-function class:State(viewer)
-	local bans = {}
+local function people(set)
+	local list = {}
 
-	for userId in self.Config.bans do
-		table.insert(bans, { UserId = tonumber(userId), Name = nameOf(userId) })
+	for userId in set do
+		table.insert(list, { UserId = tonumber(userId), Name = nameOf(userId) })
 	end
 
-	table.sort(bans, function(a, b)
+	table.sort(list, function(a, b)
 		return (a.Name or "") < (b.Name or "")
 	end)
+
+	return list
+end
+
+function class:State(viewer)
+	local hosts = people(self.Config.hosts)
+	local bans = people(self.Config.bans)
 
 	return {
 		HostId = self.HostId,
@@ -293,6 +311,7 @@ function class:State(viewer)
 		Visibility = self.Config.visibility,
 		Settings = self.Config.settings,
 		Tags = private:SettingTags(MODE, self.Config.settings),
+		Hosts = hosts,
 		Bans = bans,
 		Online = self.Live and self.Live.Online or {},
 		Players = self.Live and self.Live.Players or nil,
@@ -301,6 +320,7 @@ function class:State(viewer)
 		Broken = self.Broken,
 		Banned = self:IsBanned(viewer),
 		Locked = self:IsLocked(),
+		CoHost = self:IsCoHost(viewer),
 	}
 end
 
@@ -338,7 +358,34 @@ function hostActions.ban(self, userId)
 	end
 
 	self.Config.bans[tostring(userId)] = true
+	-- a banned co-host would be kicked every second
+	self.Config.hosts[tostring(userId)] = nil
 	nameOf(userId)
+
+	return true
+end
+
+function hostActions.host(self, userId)
+	userId = tonumber(userId)
+
+	if not userId or userId == self.HostId or self.Config.bans[tostring(userId)] then
+		return false
+	end
+
+	self.Config.hosts[tostring(userId)] = true
+	nameOf(userId)
+
+	return true
+end
+
+function hostActions.unhost(self, userId)
+	userId = tonumber(userId)
+
+	if not userId or not self.Config.hosts[tostring(userId)] then
+		return false
+	end
+
+	self.Config.hosts[tostring(userId)] = nil
 
 	return true
 end
@@ -393,7 +440,7 @@ function class:Join(client, device)
 		return teleports:Refuse(client, "banned")
 	end
 
-	if self:IsLocked() and not self:IsHost(client) then
+	if self:IsLocked() and not (self:IsHost(client) or self:IsCoHost(client)) then
 		return teleports:Refuse(client, "locked")
 	end
 

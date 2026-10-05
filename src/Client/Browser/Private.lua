@@ -370,7 +370,7 @@ return function(context)
 				end
 			else
 				label = state.Mine and "JOIN MY SERVER" or "JOIN SERVER"
-				enabled = state.Ready and not state.Banned and (not state.Locked or state.Mine) and not isJoining()
+				enabled = state.Ready and not state.Banned and (not state.Locked or state.Mine or state.CoHost) and not isJoining()
 			end
 		elseif panel == "list" then
 			enabled = placesLive[mode.Key] == true
@@ -904,28 +904,45 @@ return function(context)
 
 	----
 
-	local function makePlayerRow(parent, order, name, action, onAction)
+	-- a person on the free roam page. `actions` is what the owner can do to
+	-- them: "online" (make a host, ban; shown on hover), "host" (remove),
+	-- "ban" (unban), or nil. The row's two chips are relabelled to suit
+	local function makePlayerRow(parent, order, name, actions, onHost, onBan)
 		local row = templates.PlayerRow:Clone()
+		local hostChip = row.Actions.Unban
+		local banChip = row.Actions.Ban
+
 		row.LayoutOrder = order
 		row.Visible = true
 		setText(row.Player, name)
-		row.Actions.Ban.Visible = false
-		row.Actions.Unban.Visible = action == "unban"
+		hostChip.Visible = false
+		banChip.Visible = false
 
-		if action == "ban" then
+		if actions == "online" then
+			hostChip.Label.Text = "HOST"
+
 			row.MouseEnter:Connect(function()
-				row.Actions.Ban.Visible = true
+				hostChip.Visible = true
+				banChip.Visible = true
 				row.Stroke.Enabled = true
 			end)
 
 			row.MouseLeave:Connect(function()
-				row.Actions.Ban.Visible = false
+				hostChip.Visible = false
+				banChip.Visible = false
 				row.Stroke.Enabled = false
 			end)
 
-			bindChip(row.Actions.Ban, onAction)
-		elseif action == "unban" then
-			bindChip(row.Actions.Unban, onAction)
+			bindChip(hostChip, onHost)
+			bindChip(banChip, onBan)
+		elseif actions == "host" then
+			hostChip.Label.Text = "REMOVE"
+			hostChip.Visible = true
+			bindChip(hostChip, onHost)
+		elseif actions == "ban" then
+			hostChip.Label.Text = "UNBAN"
+			hostChip.Visible = true
+			bindChip(hostChip, onBan)
 		end
 
 		row.Parent = parent
@@ -959,12 +976,27 @@ return function(context)
 
 		for _, name in state.Online do
 			local target = playersService:FindFirstChild(name)
-			local canBan = editable and name ~= localPlayer.Name and name ~= state.Host
+			local canAct = editable and name ~= localPlayer.Name and name ~= state.Host
 
-			makePlayerRow(serverList, order, name, canBan and "ban" or nil, function()
+			makePlayerRow(serverList, order, name, canAct and "online" or nil, function()
+				if target then
+					act("host", target.UserId)
+				end
+			end, function()
 				if target then
 					act("ban", target.UserId)
 				end
+			end)
+			order += 1
+		end
+
+		-- co-hosts get past the lock and can lock, kick and ban in game
+		makeHeading(serverList, order, "Hosts", count(#state.Hosts, "player"))
+		order += 1
+
+		for _, host in state.Hosts do
+			makePlayerRow(serverList, order, host.Name or "…", editable and "host" or nil, function()
+				act("unhost", host.UserId)
 			end)
 			order += 1
 		end
@@ -974,7 +1006,7 @@ return function(context)
 			order += 1
 
 			for _, ban in state.Bans do
-				makePlayerRow(serverList, order, ban.Name or "…", "unban", function()
+				makePlayerRow(serverList, order, ban.Name or "…", "ban", nil, function()
 					act("unban", ban.UserId)
 				end)
 				order += 1

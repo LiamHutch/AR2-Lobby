@@ -29,7 +29,8 @@
 -- key "<kind>:<userId>"):
 --   { v, visibility, settings = { [Key] = value }, ...mode fields }
 --   tourney:  teams = { { name, color }, { name, color } }, maps = { mapName }
---   freeroam: bans = { [userId string] = true }
+--   freeroam: hosts = { [userId string] = true } (co-hosts: they get past the
+--             lock and can lock, kick and ban in game), bans = { [userId string] = true }
 
 local library = {}
 
