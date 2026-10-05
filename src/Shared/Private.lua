@@ -197,7 +197,7 @@ library.Modes = {
 		},
 		Heading = "Servers",
 		Empty = "No Servers",
-		Primary = "MY SERVER",
+		Primary = "CUSTOMIZE",
 		MaxPlayers = 16,
 
 		Settings = {

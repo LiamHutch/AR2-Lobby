@@ -63,6 +63,19 @@ return function(context)
 	local AMBER = Color3.fromRGB(227, 166, 74)
 	local DIM = Color3.fromRGB(85, 85, 85)
 	local GOLD = Color3.fromRGB(202, 188, 131)
+	-- the main action's gold and the grunge tints the builder gives buttons
+	local PLAY_GOLD = Color3.fromRGB(236, 210, 120)
+	local GOLD_TINT = Color3.fromRGB(255, 193, 138)
+
+	-- the main action on a page is gold, the rest bone: on the free roam list
+	-- that's JOIN, so CUSTOMIZE goes bone and the footer's JOIN goes gold
+	local function goldButton(frame)
+		context.recolor(frame, PLAY_GOLD, GOLD_TINT, PLAY_GOLD)
+	end
+
+	local function boneButton(frame)
+		context.recolor(frame, BONE, BONE, BONE)
+	end
 	local QUICK = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local SLIDE = 6
 
@@ -384,6 +397,13 @@ return function(context)
 		end
 
 		setText(primary.Label, label)
+
+		if mode.Key == "Freeroam" and panel == "list" then
+			boneButton(primary)
+		else
+			goldButton(primary)
+		end
+
 		setEnabled(primary, enabled)
 	end
 
@@ -396,6 +416,12 @@ return function(context)
 	end
 
 	local function drawFooter(row)
+		if openMode.Key == "Freeroam" then
+			goldButton(footer.Join)
+		else
+			boneButton(footer.Join)
+		end
+
 		if not row then
 			setText(footer.ServerName, "")
 			setText(footer.Meta, "")

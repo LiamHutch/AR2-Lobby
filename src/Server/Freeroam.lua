@@ -36,6 +36,10 @@ local servers = not offline and dataStoreService:GetDataStore(protocol.FREEROAM_
 local legacyStore = not offline and dataStoreService:GetDataStore(protocol.FREEROAM_CONFIGS_STORE)
 local lobbies = not offline and memoryStores:GetHashMap(protocol.FREEROAM_LOBBIES_MAP)
 local tickets = not offline and memoryStores:GetHashMap(protocol.TICKETS_MAP)
+-- TEMP: a free roam build from before the lobby's ticket learns its host from
+-- this instead (key = userId -> hostId); goes once every place runs a build
+-- that takes the ticket
+local sessions = not offline and memoryStores:GetHashMap("Freeroam Sessions - 4")
 
 -- every live session, for the poll of their running servers
 local live = {}
@@ -483,6 +487,8 @@ function class:Join(client, device)
 		if not tickets then
 			return true
 		end
+
+		pcall(sessions.SetAsync, sessions, tostring(client.UserId), self.HostId, protocol.TICKET_TTL)
 
 		return pcall(tickets.SetAsync, tickets, tostring(client.UserId), {
 			v = protocol.VERSION,

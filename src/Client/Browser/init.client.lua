@@ -286,6 +286,18 @@ local function setEnabled(frame, enabled)
 	end
 end
 
+-- gives a button new authored colours (its stroke, grunge tint and label), so
+-- a page can make the same button gold or bone; setEnabled restores these
+local function recolor(frame, stroke, tint, label)
+	authored[frame] = { stroke, tint, label }
+
+	if not frame:GetAttribute("Disabled") then
+		frame.Stroke.Color = stroke
+		frame.Backdrop.ImageColor3 = tint
+		frame.Label.Text.TextColor3 = label
+	end
+end
+
 local function setStatus(code)
 	local text = code and STATUS_TEXT[code]
 
@@ -1193,6 +1205,7 @@ if stage:FindFirstChild("ModeView") and templates:FindFirstChild("ModeCard") the
 		clear = clear,
 		bindButton = bindButton,
 		setEnabled = setEnabled,
+		recolor = recolor,
 		playSound = playSound,
 		drawChips = drawChips,
 		drawTags = drawTags,
