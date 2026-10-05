@@ -1,7 +1,8 @@
 -- Lobby-to-lobby invites: a host asks a friend who's in some lobby server
--- over to their tourney lobby or free roam server. One MessagingService
--- topic (Protocol.INVITE_TOPIC) carries them; every lobby server listens and
--- the one holding the friend shows the invite. Accepting in the same server
+-- over to their tourney lobby or free roam server. Each player has a
+-- MessagingService topic (Protocol.INVITE_TOPIC_PREFIX .. userId) that the
+-- server holding them subscribes to on join and drops on leave, so an invite
+-- only ever reaches the one server that can show it. Accepting in the same server
 -- opens the host's page; from another server it's a teleport by server id
 -- with the follow data the Friends page uses, so the page opens on arrival.
 -- The host's server remembers who it invited (IsInvited) so a private session
@@ -37,6 +38,9 @@ local pending = {}
 -- [client] = os.clock() of their last invite sent
 local lastSent = {}
 
+-- [client] = their topic's subscription
+local subscriptions = {}
+
 local onDeliver = nil
 
 for _, mode in private.Modes do
@@ -44,6 +48,10 @@ for _, mode in private.Modes do
 end
 
 ----
+
+local function topicFor(userId)
+	return protocol.INVITE_TOPIC_PREFIX .. userId
+end
 
 local function prune(set)
 	local now = os.time()
@@ -145,7 +153,7 @@ function library:Send(client, key, userId)
 		at = os.time(),
 	}
 
-	-- a friend in this server hears it straight away; others through the topic
+	-- a friend in this server hears it straight away; others through their topic
 	if playersService:GetPlayerByUserId(userId) then
 		deliver(message)
 
@@ -156,7 +164,7 @@ function library:Send(client, key, userId)
 		return true
 	end
 
-	local published, why = pcall(messagingService.PublishAsync, messagingService, protocol.INVITE_TOPIC, message)
+	local published, why = pcall(messagingService.PublishAsync, messagingService, topicFor(userId), message)
 
 	if not published then
 		warn("Lobby couldn't send an invite:", why)
@@ -208,30 +216,55 @@ function library:Forget(client)
 	pending[client] = nil
 	lastSent[client] = nil
 
+	if subscriptions[client] then
+		subscriptions[client]:Disconnect()
+		subscriptions[client] = nil
+	end
+
 	for _, byKey in invited do
 		byKey[client.UserId] = nil
 	end
+end
+
+-- listens on the player's own topic while they're here
+local function listen(client)
+	if offline or subscriptions[client] then
+		return
+	end
+
+	task.spawn(function()
+		local subscribed, connection = pcall(messagingService.SubscribeAsync, messagingService, topicFor(client.UserId), function(packet)
+			if type(packet.Data) == "table" and tonumber(packet.Data.to) == client.UserId then
+				deliver(packet.Data)
+			end
+		end)
+
+		if not subscribed then
+			warn("Lobby couldn't listen for invites to", client.Name, connection)
+
+			return
+		end
+
+		-- they left while the subscribe was in flight
+		if not client.Parent then
+			connection:Disconnect()
+
+			return
+		end
+
+		subscriptions[client] = connection
+	end)
 end
 
 -- sameServer(client, hostId, key) is what an accepted invite in this server does
 function library:Start(sameServer)
 	onDeliver = sameServer
 
-	if offline then
-		return
+	playersService.PlayerAdded:Connect(listen)
+
+	for _, client in playersService:GetPlayers() do
+		listen(client)
 	end
-
-	task.spawn(function()
-		local subscribed, why = pcall(messagingService.SubscribeAsync, messagingService, protocol.INVITE_TOPIC, function(packet)
-			if type(packet.Data) == "table" then
-				deliver(packet.Data)
-			end
-		end)
-
-		if not subscribed then
-			warn("Lobby couldn't subscribe to invites:", why)
-		end
-	end)
 end
 
 return library
