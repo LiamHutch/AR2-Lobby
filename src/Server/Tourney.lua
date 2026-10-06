@@ -361,6 +361,23 @@ function class:Row(viewer)
 	}
 end
 
+
+-- what other lobby servers list this session as (Listings.lua): who may see
+-- it and a stranger's row
+function class:Listing()
+	local whitelist = {}
+
+	for userId in self.Config.whitelist do
+		table.insert(whitelist, tonumber(userId))
+	end
+
+	return {
+		Visibility = self.Config.visibility,
+		Whitelist = whitelist,
+		Row = self:Row(nil),
+	}
+end
+
 -- everything the panel shows
 function class:State(viewer)
 	local teams = {}

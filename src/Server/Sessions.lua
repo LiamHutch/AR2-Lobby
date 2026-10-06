@@ -21,14 +21,19 @@
 --   "invite", key, userId   invite a friend to the session you host (Invites.lua)
 --   "accept", id / "decline", id   answer an invite
 --   "follow", userId     go to that friend's server
+--   "go", key, hostId    go to the lobby server hosting a session listed
+--                        from another server (Listings.lua); the host's
+--                        page opens on arrival, like a friend's JOIN
 --   "ready"              the client is up: told who to open if a friend's
 --                        JOIN sent them here, or which page if the game's
 --                        Return To Lobby did
 --
 -- server -> client:
 --   "list", key, rows, own      the sessions this player may see (Row, plus
---                               Friend), own = their own session's row, or
---                               nil while loading
+--                               Friend and Whitelisted; Remote for one hosted
+--                               in another lobby server, which JOIN goes to
+--                               with "go"), own = their own session's row,
+--                               or nil while loading
 --   "state", key, hostId, state what the panel shows (State), nil = gone
 --   "rejoin", info              a live match to go back to, once per server
 --   "counts", tally, live       per mode: { Online, Sessions } of the listed
@@ -51,7 +56,9 @@
 -- already in it (a tourney lobby's rosters, a free roam server's co-hosts);
 -- friends to the host's friends; public to everyone. The host's whitelist
 -- and anyone they invited see it whatever the visibility. The lists are per
--- player (friendship, whitelist), so each is one FireClient.
+-- player (friendship, whitelist), so each is one FireClient. Sessions in
+-- other lobby servers are listed too (Listings.lua), under the same rules
+-- bar invites, with JOIN taking the player to the host's server.
 
 local playersService = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -66,6 +73,7 @@ local invites = require(script.Parent.Invites)
 local subscriptions = require(script.Parent.Subscriptions)
 local catalog = require(script.Parent.Catalog)
 local whitelist = require(script.Parent.Whitelist)
+local listings = require(script.Parent.Listings)
 
 local remote = replicatedStorage.Remotes.Private
 
@@ -182,6 +190,22 @@ local function canSee(client, session, key)
 	return false
 end
 
+-- a session another lobby server listed: the same rules as a local one, bar
+-- invites (an invite carries the player over itself)
+local function canSeeRemote(client, record)
+	if listings:Whitelisted(record, client.UserId) then
+		return true
+	end
+
+	if record.visibility == "public" then
+		return true
+	elseif record.visibility == "friends" then
+		return isFriend(client, record.hostId)
+	end
+
+	return false
+end
+
 local function sortRows(a, b)
 	if a.Mine ~= b.Mine then
 		return a.Mine
@@ -224,6 +248,22 @@ function sendList(client, key)
 		end
 	end
 
+	-- the other servers' sessions; a host's own server knows best, and a
+	-- host who moved here is already listed above
+	for hostId, record in listings:Remote(key) do
+		if not sessions[key][hostId] and hostId ~= client.UserId and canSeeRemote(client, record) then
+			local row = table.clone(record.row)
+			row.HostId = hostId
+			row.Host = tostring(record.hostName)
+			row.Mine = false
+			row.Friend = isFriend(client, hostId)
+			row.Whitelisted = listings:Whitelisted(record, client.UserId)
+			row.Remote = true
+
+			table.insert(rows, row)
+		end
+	end
+
 	table.sort(rows, sortRows)
 
 	if client.Parent then
@@ -245,6 +285,13 @@ local function tally()
 				listed += 1
 				local row = session:Row(nil)
 				online += row.Players or 0
+			end
+		end
+
+		for hostId, record in listings:Remote(key) do
+			if not byHost[hostId] and record.visibility ~= "private" then
+				listed += 1
+				online += record.row.Players or 0
 			end
 		end
 
@@ -318,6 +365,16 @@ local function broadcastList(key)
 	broadcastCounts()
 end
 
+-- a local session changed in a way its row shows: the other servers get the
+-- new record, and the lists here go out
+local function publishList(key, session)
+	if session then
+		listings:Publish(key, session.HostId, session.HostName, session:Listing())
+	end
+
+	broadcastList(key)
+end
+
 local function sendState(client)
 	local view = viewing[client]
 
@@ -385,7 +442,7 @@ local function ensureSession(client, key)
 			if what == "state" then
 				broadcastState(key, userId)
 			elseif what == "list" then
-				broadcastList(key)
+				publishList(key, session)
 			end
 		end
 
@@ -401,7 +458,7 @@ local function ensureSession(client, key)
 			creating[client][key] = nil
 		end
 
-		broadcastList(key)
+		publishList(key, session)
 		broadcastState(key, userId)
 	end)
 
@@ -553,7 +610,7 @@ function handlers.act(client, key, hostId, action, ...)
 
 		if #added > 0 then
 			broadcastState(key, hostId)
-			broadcastList(key)
+			publishList(key, session)
 		end
 
 		if client.Parent then
@@ -580,8 +637,30 @@ function handlers.act(client, key, hostId, action, ...)
 	end
 
 	if listChanged then
-		broadcastList(key)
+		publishList(key, session)
 	end
+end
+
+-- a session another lobby server listed: off to that server, with the
+-- follow data that opens the host's page on arrival
+function handlers.go(client, key, hostId)
+	hostId = tonumber(hostId)
+	local record = CLASSES[key] and hostId and listings:Find(key, hostId)
+
+	if not record or sessions[key][hostId] or not canSeeRemote(client, record) then
+		return teleports:Refuse(client, "closed")
+	end
+
+	local options = Instance.new("TeleportOptions")
+	options.ServerInstanceId = record.jobId
+	options:SetTeleportData({
+		source = protocol.SOURCE,
+		v = protocol.VERSION,
+		followId = hostId,
+		mode = key,
+	})
+
+	teleports:SendPrivate(client, record.placeId, options, "Lobby")
 end
 
 function handlers.friends(client, online)
@@ -660,6 +739,7 @@ local function onLeave(client)
 		if own then
 			own:Destroy()
 			byHost[client.UserId] = nil
+			listings:Retract(key, client.UserId)
 			broadcastState(key, client.UserId)
 		end
 
@@ -683,6 +763,14 @@ end
 
 function library:Start(directory)
 	friendsLibrary:Start(directory)
+	listings:Start()
+
+	-- the other servers' sessions changed: every open list
+	listings.Changed.Event:Connect(function()
+		for key in sessions do
+			broadcastList(key)
+		end
+	end)
 
 	-- an invite accepted in the host's own server: open their page here
 	invites:Start(function(client, hostId, key)
@@ -708,13 +796,13 @@ function library:Start(directory)
 
 		local now = os.clock()
 
-		if (action == "act" or action == "friends" or action == "follow") and now - (lastAct[client] or 0) < ACT_GAP then
+		if (action == "act" or action == "friends" or action == "follow" or action == "go") and now - (lastAct[client] or 0) < ACT_GAP then
 			return
 		end
 
 		-- the mode actions take the mode as their first argument; the tile is
 		-- hidden without permission, so this only stops a forged message
-		if (action == "open" or action == "view" or action == "act" or action == "invite") and not allowed(client, (...)) then
+		if (action == "open" or action == "view" or action == "act" or action == "invite" or action == "go") and not allowed(client, (...)) then
 			return
 		end
 

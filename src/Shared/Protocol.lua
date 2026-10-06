@@ -150,6 +150,17 @@ return {
 	FREEROAM_CONFIGS_STORE = "Freeroam Configs - 4",
 	FREEROAM_LOBBIES_MAP = "Freeroam Lobbies - 4",
 
+	-- cross-server session listings (Listings.lua): the lobby server hosting
+	-- a session writes its record to this MemoryStore sorted map, key
+	-- "<mode key>:<hostId>", while it lives, rewritten on change and every
+	-- LISTING_REFRESH seconds with LISTING_TTL; every lobby server lists the
+	-- map each LISTING_POLL and shows the other servers' sessions
+	LISTINGS_MAP = "LobbySessions1",
+	LISTING_VERSION = 1,
+	LISTING_TTL = 90,
+	LISTING_REFRESH = 30,
+	LISTING_POLL = 30,
+
 	-- lobby-to-lobby invites (Invites.lua): a MessagingService topic per player,
 	-- INVITE_TOPIC_PREFIX .. userId, that the server holding them subscribes to
 	-- while they're there; a message is

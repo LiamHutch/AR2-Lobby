@@ -498,12 +498,18 @@ return function(context)
 				table.insert(meta, "offline")
 			end
 
+			-- hosted from another lobby server: JOIN goes there first
+			if row.Remote then
+				table.insert(meta, "in another lobby")
+			end
+
 			setText(footer.Meta, table.concat(meta, "  ·  "))
 		end
 
 		-- a tourney row opens its roster page, where JOIN lives; a free roam
-		-- row joins the server from here
-		setText(footer.Join.Label, row.Rejoin and "REJOIN" or (openMode.Key == "Tourney" and "VIEW" or "JOIN"))
+		-- row joins the server from here; a row from another lobby server
+		-- joins that server
+		setText(footer.Join.Label, row.Rejoin and "REJOIN" or ((openMode.Key == "Tourney" and not row.Remote) and "VIEW" or "JOIN"))
 		setEnabled(footer.Join, not row.Full and not isJoining())
 	end
 
@@ -1358,10 +1364,23 @@ return function(context)
 		return true
 	end
 
+	-- the row the footer shows
+	local function selectedRow()
+		for _, row in visibleRows() do
+			if rowFor(row) == selectedHostId then
+				return row
+			end
+		end
+
+		return nil
+	end
+
 	function library.JoinSelected()
 		if not openMode or not selectedHostId then
 			return
 		end
+
+		local picked = selectedRow()
 
 		if openMode.Key == "Friends" and inviting then
 			remote:FireServer("invite", inviting, selectedHostId)
@@ -1377,6 +1396,11 @@ return function(context)
 			setStatus("joining")
 			loading.Prepare(openMode.Name)
 			remote:FireServer("rejoin")
+		elseif picked and picked.Remote then
+			-- hosted in another lobby server: go there, the page opens on arrival
+			setStatus("joining")
+			loading.Prepare("Lobby")
+			remote:FireServer("go", openMode.Key, selectedHostId)
 		elseif openMode.Key == "Tourney" then
 			viewSession(selectedHostId)
 		else
@@ -1782,10 +1806,20 @@ return function(context)
 		end
 	end
 
-	-- INVITE on your own session: pick a friend in a lobby server to ask over
+	-- INVITE on your own session: pick a friend in a lobby server to ask over.
+	-- Hidden since whitelists and the cross-server listings cover it; the
+	-- invite flow stays wired for a toast that may still arrive
 	local invite = info.Visibility:FindFirstChild("Invite")
 
 	if invite then
+		invite.Visible = false
+
+		local divider = info.Visibility:FindFirstChild("Divider")
+
+		if divider then
+			divider.Visible = false
+		end
+
 		bindChip(invite, function()
 			if not openMode or not state or not state.Mine then
 				return
