@@ -46,6 +46,10 @@ local function write(key)
 		return
 	end
 
+	-- stamped before the call too, so a save made while this one is in
+	-- flight (a pasted whitelist adds several in a row) waits its turn
+	lastWrite[key] = os.clock()
+
 	local worked, why = pcall(store.SetAsync, store, key, record)
 	lastWrite[key] = os.clock()
 

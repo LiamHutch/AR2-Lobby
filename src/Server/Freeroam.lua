@@ -4,12 +4,12 @@
 --
 -- The host's config is the lobby's own (Shared/Private.lua); the free roam
 -- server reads it at boot and writes its in-game lock, co-host and ban
--- changes back (settings, hosts and bans only). A host from before the lobby owned the config is
+-- changes back (settings, hosts and bans only; the whitelist is the lobby's,
+-- the game only reads it). A host from before the lobby owned the config is
 -- seeded once from the old VIP lobby's record (FREEROAM_CONFIGS_STORE). The
 -- host's reserved server record (FREEROAM_SERVERS_STORE) stays: the game
 -- checks it on arrival to know whose server it is.
 
-local playersService = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
 local teleportService = game:GetService("TeleportService")
 local memoryStores = game:GetService("MemoryStoreService")
@@ -21,6 +21,7 @@ local private = require(replicatedStorage.Shared.Private)
 local platform = require(replicatedStorage.Shared.Platform)
 local store = require(script.Parent.PrivateStore)
 local teleports = require(script.Parent.Teleports)
+local whitelist = require(script.Parent.Whitelist)
 
 local class = {}
 class.__index = class
@@ -44,9 +45,6 @@ local sessions = not offline and memoryStores:GetHashMap("Freeroam Sessions - 4"
 -- every live session, for the poll of their running servers
 local live = {}
 
--- [userId] = name, looked up for ban rows
-local names = {}
-
 ----
 
 local function sanitizeConfig(raw)
@@ -58,6 +56,7 @@ local function sanitizeConfig(raw)
 		settings = private:Sanitize(MODE, raw.settings),
 		hosts = {},
 		bans = {},
+		whitelist = whitelist:Sanitize(raw.whitelist),
 	}
 
 	for _, field in { "hosts", "bans" } do
@@ -109,25 +108,6 @@ local function fromLegacy(record)
 	}
 end
 
-local function nameOf(userId)
-	userId = tonumber(userId)
-
-	if not userId then
-		return nil
-	end
-
-	if names[userId] == nil then
-		names[userId] = false
-
-		task.spawn(function()
-			local found, name = pcall(playersService.GetNameFromUserIdAsync, playersService, userId)
-			names[userId] = found and name or string.format("[%d]", userId)
-		end)
-	end
-
-	return names[userId] or nil
-end
-
 ----
 
 -- the saved record, else the game's old config for this host, else defaults
@@ -165,9 +145,9 @@ function class.new(host, saved, sync, placeId)
 
 	live[self] = true
 
-	for _, field in { "hosts", "bans" } do
+	for _, field in { "hosts", "bans", "whitelist" } do
 		for userId in self.Config[field] do
-			nameOf(userId)
+			whitelist:NameOf(userId)
 		end
 	end
 
@@ -289,6 +269,17 @@ function class:IsBanned(client)
 	return self.Config.bans[tostring(client.UserId)] == true
 end
 
+-- on the host's whitelist: sees the server whatever its visibility and gets
+-- past the lock, without a co-host's powers
+function class:IsWhitelisted(client)
+	return whitelist:Has(self.Config.whitelist, client.UserId)
+end
+
+-- past the lock: the host, co-hosts and the whitelist
+function class:MayEnter(client)
+	return self:IsHost(client) or self:IsCoHost(client) or self:IsWhitelisted(client)
+end
+
 function class:Row(viewer)
 	local tags = private:SettingTags(MODE, self.Config.settings)
 	local players = self.Live and self.Live.Players or nil
@@ -307,23 +298,9 @@ function class:Row(viewer)
 	}
 end
 
-local function people(set)
-	local list = {}
-
-	for userId in set do
-		table.insert(list, { UserId = tonumber(userId), Name = nameOf(userId) })
-	end
-
-	table.sort(list, function(a, b)
-		return (a.Name or "") < (b.Name or "")
-	end)
-
-	return list
-end
-
 function class:State(viewer)
-	local hosts = people(self.Config.hosts)
-	local bans = people(self.Config.bans)
+	local hosts = whitelist:People(self.Config.hosts)
+	local bans = whitelist:People(self.Config.bans)
 
 	return {
 		HostId = self.HostId,
@@ -342,6 +319,9 @@ function class:State(viewer)
 		Banned = self:IsBanned(viewer),
 		Locked = self:IsLocked(),
 		CoHost = self:IsCoHost(viewer),
+		Whitelisted = self:IsWhitelisted(viewer),
+		-- the list itself is the host's business
+		Whitelist = viewer == self.Host and whitelist:People(self.Config.whitelist) or nil,
 	}
 end
 
@@ -381,7 +361,8 @@ function hostActions.ban(self, userId)
 	self.Config.bans[tostring(userId)] = true
 	-- a banned co-host would be kicked every second
 	self.Config.hosts[tostring(userId)] = nil
-	nameOf(userId)
+	self.Config.whitelist[tostring(userId)] = nil
+	whitelist:NameOf(userId)
 
 	return true
 end
@@ -394,7 +375,7 @@ function hostActions.host(self, userId)
 	end
 
 	self.Config.hosts[tostring(userId)] = true
-	nameOf(userId)
+	whitelist:NameOf(userId)
 
 	return true
 end
@@ -423,7 +404,22 @@ function hostActions.unban(self, userId)
 	return true
 end
 
--- a client action from Sessions; returns stateChanged, listChanged
+-- the whitelist takes user ids; Sessions turns a typed name into one. A
+-- banned player can't be whitelisted; unban them first
+function hostActions.whitelist(self, userId)
+	if self.Config.bans[tostring(tonumber(userId))] then
+		return false, "banned"
+	end
+
+	return whitelist:Add(self.Config.whitelist, userId, self.HostId)
+end
+
+function hostActions.unwhitelist(self, userId)
+	return whitelist:Remove(self.Config.whitelist, userId)
+end
+
+-- a client action from Sessions; returns stateChanged, listChanged, and a
+-- code saying why an action didn't take when the handler has one
 function class:Act(client, action, ...)
 	if action == "join" then
 		self:Join(client, ...)
@@ -441,13 +437,13 @@ function class:Act(client, action, ...)
 		return false, false
 	end
 
-	local changed = handler(self, ...)
+	local changed, code = handler(self, ...)
 
 	if changed then
 		self:Save()
 	end
 
-	return changed, changed
+	return changed, changed, code
 end
 
 -- sends a player to this server. The free roam server checks the lock and
@@ -461,7 +457,7 @@ function class:Join(client, device)
 		return teleports:Refuse(client, "banned")
 	end
 
-	if self:IsLocked() and not (self:IsHost(client) or self:IsCoHost(client)) then
+	if self:IsLocked() and not self:MayEnter(client) then
 		return teleports:Refuse(client, "locked")
 	end
 

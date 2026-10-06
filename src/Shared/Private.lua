@@ -29,7 +29,10 @@
 --
 -- A host's config, as stored and sent to clients (Protocol.PRIVATE_STORE,
 -- key "<kind>:<userId>"):
---   { v, visibility, settings = { [Key] = value }, ...mode fields }
+--   { v, visibility, settings = { [Key] = value }, whitelist, ...mode fields }
+--   whitelist = { [userId string] = true }: players who see and join the
+--             session whatever its visibility (Server/Whitelist.lua); on free
+--             roam they also get past the lock, without a co-host's powers
 --   tourney:  teams = { { name, color }, { name, color } }, maps = { mapName }
 --   freeroam: hosts = { [userId string] = true } (co-hosts: they get past the
 --             lock and can lock, kick and ban in game), bans = { [userId string] = true }
@@ -39,7 +42,7 @@ local library = {}
 ----
 
 -- visibility decides who sees a session in the list. Private is unlisted:
--- only the host and anyone already on its rosters
+-- only the host, anyone already on its rosters, and the host's whitelist
 library.Visibilities = { "private", "friends", "public" }
 
 library.VisibilityLabels = {

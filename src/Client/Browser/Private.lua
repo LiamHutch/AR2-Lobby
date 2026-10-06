@@ -141,6 +141,14 @@ return function(context)
 	local previewImages = nil
 	local dropdownOpen = nil
 
+	-- the whitelist's add box survives redraws: what's typed, whether it has
+	-- focus, and the last answer to an add (shown in the heading for a bit)
+	local whitelistDraft = ""
+	local whitelistFocused = false
+	local whitelistNote = nil
+	local whitelistHeading = nil
+	local whitelistBox = nil
+
 	----
 
 	local function plural(amount, singular, many)
@@ -422,7 +430,7 @@ return function(context)
 				end
 			else
 				label = state.Mine and "JOIN MY SERVER" or "JOIN SERVER"
-				enabled = state.Ready and not state.Banned and (not state.Locked or state.Mine or state.CoHost) and not isJoining()
+				enabled = state.Ready and not state.Banned and (not state.Locked or state.Mine or state.CoHost or state.Whitelisted) and not isJoining()
 			end
 		elseif panel == "list" then
 			enabled = placesLive[mode.Key] == true
@@ -615,7 +623,7 @@ return function(context)
 				frame.Access.Text.TextColor3 = AMBER
 			else
 				setText(frame.Line.Host, row.Host)
-				setText(frame.Line.Tag, row.Mine and "YOU" or (row.Friend and "FRIEND" or ""))
+				setText(frame.Line.Tag, row.Mine and "YOU" or (row.Friend and "FRIEND" or (row.Whitelisted and "WHITELISTED" or "")))
 				setText(frame.Detail, row.Detail)
 				setText(frame.Access, row.Access)
 				frame.Access.Text.TextColor3 = row.AccessColor or (row.Locked and AMBER or BONE)
@@ -861,6 +869,8 @@ return function(context)
 
 	----
 
+	local drawWhitelist
+
 	local function drawConfig()
 		clear(configList)
 		closeDropdown()
@@ -965,6 +975,11 @@ return function(context)
 		end
 
 		grid.Parent = configList
+		order += 1
+
+		if mine() then
+			drawWhitelist(configList, order, editable)
+		end
 	end
 
 	----
@@ -1011,6 +1026,79 @@ return function(context)
 		end
 
 		row.Parent = parent
+	end
+
+	-- the host's whitelist: who sees and joins the session whatever its
+	-- visibility. A heading, the add box (Enter or ADD sends what's typed or
+	-- pasted, usernames or user ids with commas between, to the server, which
+	-- looks them up and answers "whitelisted"), then the names with REMOVE.
+	-- Returns the next layout order
+	function drawWhitelist(parent, order, editable)
+		local list = state.Whitelist or {}
+
+		whitelistHeading = makeHeading(parent, order, "Whitelist", whitelistNote or count(#list, "player"))
+		order += 1
+
+		local addTemplate = templates:FindFirstChild("PlayerAdd")
+
+		if editable and addTemplate then
+			local add = addTemplate:Clone()
+			local box = add.NameBox.Input
+
+			add.LayoutOrder = order
+			add.Visible = true
+			box.Text = whitelistDraft
+			whitelistBox = box
+
+			local function submit()
+				local name = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
+
+				if name == "" then
+					return
+				end
+
+				act("whitelist", name)
+				setText(whitelistHeading.Note, "Looking up…")
+			end
+
+			box:GetPropertyChangedSignal("Text"):Connect(function()
+				whitelistDraft = box.Text
+			end)
+
+			box.Focused:Connect(function()
+				whitelistFocused = true
+			end)
+
+			box.FocusLost:Connect(function(enter)
+				whitelistFocused = false
+
+				if enter then
+					submit()
+				end
+			end)
+
+			bindChip(add.Add, submit)
+			add.Parent = parent
+			order += 1
+
+			-- a redraw mid-typing (someone joined) keeps the caret
+			if whitelistFocused then
+				task.defer(function()
+					if box.Parent then
+						box:CaptureFocus()
+					end
+				end)
+			end
+		end
+
+		for _, person in list do
+			makePlayerRow(parent, order, person.Name or "…", editable and "host" or nil, function()
+				act("unwhitelist", person.UserId)
+			end)
+			order += 1
+		end
+
+		return order
 	end
 
 	local function drawServer()
@@ -1067,6 +1155,8 @@ return function(context)
 		end
 
 		if editable then
+			order = drawWhitelist(serverList, order, true)
+
 			makeHeading(serverList, order, "Banned", count(#state.Bans, "player"))
 			order += 1
 
@@ -1112,6 +1202,7 @@ return function(context)
 
 		viewedHostId = nil
 		state = nil
+		whitelistDraft, whitelistFocused, whitelistNote, whitelistHeading, whitelistBox = "", false, nil, nil, nil
 		countdownThread = nil
 		showPanel("list")
 		drawPanel()
@@ -1550,6 +1641,71 @@ return function(context)
 			if openMode and openMode.Key == "Friends" and inviting then
 				setText(footer.Meta, sent and "Invite sent" or (code == "slow" and "Too many invites, wait a moment" or "Couldn't send the invite"))
 			end
+		elseif message == "whitelisted" then
+			-- what a paste did: the entries that took, the ones that didn't and
+			-- why; the ones that didn't stay in the box to fix
+			local added, failed, code = ...
+			local parts = {}
+
+			if code == "slow" then
+				table.insert(parts, "Still looking up the last paste")
+			elseif code == "empty" then
+				table.insert(parts, "Type a username or user ID")
+			else
+				if #added == 1 then
+					table.insert(parts, "Added " .. added[1])
+				elseif #added > 1 then
+					table.insert(parts, "Added " .. count(#added, "player"))
+				end
+
+				local words = {
+					unknown = "not found",
+					already = "already listed",
+					banned = "banned, unban first",
+					self = "that's you",
+					full = "list full",
+					failed = "couldn't add",
+				}
+				local byCode, order, left = {}, {}, {}
+
+				for _, entry in failed or {} do
+					if not byCode[entry.Code] then
+						byCode[entry.Code] = {}
+						table.insert(order, entry.Code)
+					end
+
+					table.insert(byCode[entry.Code], entry.Entry)
+					table.insert(left, entry.Entry)
+				end
+
+				for _, why in order do
+					table.insert(parts, (words[why] or why) .. ": " .. table.concat(byCode[why], ", "))
+				end
+
+				whitelistDraft = table.concat(left, ", ")
+
+				if whitelistBox and whitelistBox.Parent then
+					whitelistBox.Text = whitelistDraft
+				end
+			end
+
+			whitelistNote = table.concat(parts, "  ·  ")
+
+			if whitelistHeading and whitelistHeading.Parent then
+				setText(whitelistHeading.Note, whitelistNote)
+			end
+
+			local note = whitelistNote
+
+			task.delay(5, function()
+				if whitelistNote == note then
+					whitelistNote = nil
+
+					if whitelistHeading and whitelistHeading.Parent and state then
+						setText(whitelistHeading.Note, count(#(state.Whitelist or {}), "player"))
+					end
+				end
+			end)
 		elseif message == "rejoin" then
 			rejoin = ...
 

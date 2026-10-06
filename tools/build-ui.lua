@@ -2233,6 +2233,54 @@ local function playerRowTemplate()
 	})
 end
 
+-- a box for usernames or user ids (commas between for a bulk import) and an
+-- ADD chip, the whitelist's add row; the client sends the text on Enter or
+-- the chip
+local function playerAddTemplate()
+	local add = tint(rowChip("Add", "ADD", 62, 22, 12, 4), GOLD)
+
+	return paneRow("PlayerAdd", 34, 0.95, false, {
+		make("Frame", {
+			Name = "NameBox",
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 8, 0.5, 0),
+			Size = UDim2.new(1, -90, 0, 26),
+			BackgroundColor3 = BLACK,
+			BackgroundTransparency = 0.4,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+		}, {
+			make("UIStroke", {
+				Name = "Stroke",
+				Color = BONE,
+				Transparency = 0.5,
+				Thickness = 2,
+				LineJoinMode = Enum.LineJoinMode.Miter,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			}),
+
+			make("TextBox", {
+				Name = "Input",
+				Position = UDim2.fromOffset(10, 0),
+				Size = UDim2.new(1, -20, 1, 0),
+				BackgroundTransparency = 1,
+				ClearTextOnFocus = false,
+				FontFace = font(Enum.FontWeight.Medium),
+				TextSize = 18,
+				TextColor3 = BONE,
+				PlaceholderText = "Usernames or user IDs, commas between",
+				PlaceholderColor3 = Color3.fromRGB(120, 118, 114),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Text = "",
+				ZIndex = 3,
+			}),
+		}),
+
+		add,
+	})
+end
+
 -- one choice in the Dropdown; the client fills the background on hover
 local function dropdownItemTemplate()
 	return make("ImageButton", {
@@ -2276,6 +2324,7 @@ local function modeTemplates()
 		mapTilesTemplate(),
 		mapTileTemplate(),
 		playerRowTemplate(),
+		playerAddTemplate(),
 		dropdownItemTemplate(),
 	}
 end

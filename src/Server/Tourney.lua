@@ -20,6 +20,7 @@ local protocol = require(replicatedStorage.Shared.Protocol)
 local private = require(replicatedStorage.Shared.Private)
 local store = require(script.Parent.PrivateStore)
 local teleports = require(script.Parent.Teleports)
+local whitelist = require(script.Parent.Whitelist)
 
 local class = {}
 class.__index = class
@@ -51,6 +52,7 @@ local function sanitizeConfig(raw)
 		settings = private:Sanitize(MODE, raw.settings),
 		teams = {},
 		maps = {},
+		whitelist = whitelist:Sanitize(raw.whitelist),
 	}
 
 	for index = 1, TEAMS do
@@ -272,6 +274,11 @@ function class:IsMember(client)
 	return self:Seat(client) ~= nil
 end
 
+-- on the host's whitelist: sees and joins the lobby whatever its visibility
+function class:IsWhitelisted(client)
+	return whitelist:Has(self.Config.whitelist, client.UserId)
+end
+
 function class:Members()
 	local members = {}
 
@@ -390,6 +397,9 @@ function class:State(viewer)
 		Readout = { big, small },
 		YourTeam = (self:Seat(viewer)),
 		Members = #self:Members(),
+		Whitelisted = self:IsWhitelisted(viewer),
+		-- the list itself is the host's business
+		Whitelist = viewer == self.Host and whitelist:People(self.Config.whitelist) or nil,
 	}
 end
 
@@ -556,7 +566,17 @@ function hostActions.kick(self, userId)
 	return false
 end
 
--- a client action from Sessions; returns stateChanged, listChanged
+-- the whitelist takes user ids; Sessions turns a typed name into one
+function hostActions.whitelist(self, userId)
+	return whitelist:Add(self.Config.whitelist, userId, self.HostId)
+end
+
+function hostActions.unwhitelist(self, userId)
+	return whitelist:Remove(self.Config.whitelist, userId)
+end
+
+-- a client action from Sessions; returns stateChanged, listChanged, and a
+-- code saying why an action didn't take when the handler has one
 function class:Act(client, action, ...)
 	if action == "join" then
 		return self:Join(client, ...), true
@@ -580,13 +600,13 @@ function class:Act(client, action, ...)
 		return false, false
 	end
 
-	local changed = handler(self, ...)
+	local changed, code = handler(self, ...)
 
 	if changed then
 		self:Save()
 	end
 
-	return changed, changed
+	return changed, changed, code
 end
 
 ----

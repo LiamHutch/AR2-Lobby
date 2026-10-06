@@ -11,7 +11,9 @@
 --   "view", key, hostId  look at a session (their own, or a listed one)
 --   "act", key, hostId, action, ...   an action on a session (Tourney.lua /
 --                        Freeroam.lua Act); "join" on a tourney lobby leaves
---                        any other lobby first
+--                        any other lobby first; "whitelist", text takes
+--                        typed or pasted usernames and user ids, commas
+--                        between, looked up here (Whitelist.lua)
 --   "unview"             back to the list
 --   "rejoin"             back into a live match (Tourney.Rejoin)
 --   "friends", entries   what the client's GetFriendsOnlineAsync returned;
@@ -37,12 +39,19 @@
 --                               invited you); key says which mode
 --   "invite", info              an invite: { Id, From, FromName, Key, Same }
 --   "invited", userId, sent, code   the answer to an "invite" 
+--   "whitelisted", added, failed, code   the answer to a "whitelist" act:
+--                               added = the entries that took, failed =
+--                               { { Entry, Code } } with Code = "unknown" |
+--                               "self" | "already" | "full" | "banned" |
+--                               "failed"; code = "slow" (a paste is still
+--                               being looked up) or "empty" (nothing in it)
 --   "open", key                 open this mode's page (back from that game mode)
 --
 -- Visibility: a private session is listed only to its host and the players
 -- already in it (a tourney lobby's rosters, a free roam server's co-hosts);
--- friends to the host's friends; public to everyone. The
--- lists are per player (friendship), so each is one FireClient.
+-- friends to the host's friends; public to everyone. The host's whitelist
+-- and anyone they invited see it whatever the visibility. The lists are per
+-- player (friendship, whitelist), so each is one FireClient.
 
 local playersService = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -56,6 +65,7 @@ local friendsLibrary = require(script.Parent.Friends)
 local invites = require(script.Parent.Invites)
 local subscriptions = require(script.Parent.Subscriptions)
 local catalog = require(script.Parent.Catalog)
+local whitelist = require(script.Parent.Whitelist)
 
 local remote = replicatedStorage.Remotes.Private
 
@@ -152,7 +162,7 @@ local function loadFriends(client)
 end
 
 local function canSee(client, session, key)
-	if session:IsHost(client) or session:IsMember(client) then
+	if session:IsHost(client) or session:IsMember(client) or session:IsWhitelisted(client) then
 		return true
 	end
 
@@ -204,6 +214,7 @@ function sendList(client, key)
 		if canSee(client, session, key) then
 			local row = session:Row(client)
 			row.Friend = not row.Mine and isFriend(client, hostId)
+			row.Whitelisted = not row.Mine and session:IsWhitelisted(client)
 
 			if row.Mine then
 				own = row
@@ -417,6 +428,25 @@ end
 
 ----
 
+-- a looked-up name landing: the panels showing "…" for it redraw, once per frame
+local namesQueued = false
+
+whitelist.NameLoaded.Event:Connect(function()
+	if namesQueued then
+		return
+	end
+
+	namesQueued = true
+
+	task.defer(function()
+		namesQueued = false
+
+		for client in viewing do
+			sendState(client)
+		end
+	end)
+end)
+
 -- a purchase prompt closing: the host's own view shows the new answer
 subscriptions.Changed.Event:Connect(function(client)
 	local view = viewing[client]
@@ -484,6 +514,51 @@ function handlers.act(client, key, hostId, action, ...)
 	-- public is paid: without the subscription, the purchase prompt instead
 	if action == "visibility" and (...) == "public" and not subscriptions:CanPublic(client) then
 		subscriptions:Offer(client, remote)
+
+		return
+	end
+
+	-- a whitelist add comes as typed or pasted names and ids: looked up here
+	-- (it yields), and the host hears back what took and what didn't
+	if action == "whitelist" then
+		if not session:IsHost(client) then
+			return
+		end
+
+		local results, code = whitelist:Resolve(client, (...))
+		local added, failed = {}, {}
+
+		for _, result in results or {} do
+			local why = result.Code
+
+			if result.UserId then
+				local stateChanged, _, actCode = session:Act(client, action, result.UserId)
+
+				if stateChanged then
+					table.insert(added, result.Entry)
+					why = nil
+				else
+					why = actCode or "failed"
+				end
+			end
+
+			if why then
+				table.insert(failed, { Entry = result.Entry, Code = why })
+			end
+		end
+
+		if results and #results == 0 then
+			code = "empty"
+		end
+
+		if #added > 0 then
+			broadcastState(key, hostId)
+			broadcastList(key)
+		end
+
+		if client.Parent then
+			remote:FireClient(client, "whitelisted", added, failed, code)
+		end
 
 		return
 	end
@@ -603,6 +678,7 @@ local function onLeave(client)
 	creating[client] = nil
 	friendsLibrary:Forget(client)
 	invites:Forget(client)
+	whitelist:Forget(client)
 end
 
 function library:Start(directory)
