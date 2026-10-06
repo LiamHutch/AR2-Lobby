@@ -1067,7 +1067,7 @@ end
 -- the mode view's one gold action: auto-width, a plus drawn from two bars so
 -- it doesn't depend on icon art
 local function inviteChip()
-	local object = sortChip("Invite", "INVITE", 5, 104)
+	local object = sortChip("Invite", "INVITE", 6, 104)
 	object.Stroke.Color = GOLD
 	object.Stroke.Transparency = 0.4
 	object.Label.TextColor3 = GOLD
@@ -1135,11 +1135,12 @@ local function buildModeInfo()
 			list(Enum.FillDirection.Horizontal, 8, { VerticalAlignment = Enum.VerticalAlignment.Center }),
 			sortChip("Private", "PRIVATE", 1, 96),
 			sortChip("Friends", "FRIENDS", 2, 96),
-			sortChip("Public", "PUBLIC", 3, 96),
+			sortChip("Open", "OPEN", 3, 96),
+			sortChip("Public", "PUBLIC", 4, 96),
 
 			make("Frame", {
 				Name = "Divider",
-				LayoutOrder = 4,
+				LayoutOrder = 5,
 				Size = UDim2.fromOffset(2, 22),
 				BackgroundColor3 = BONE,
 				BackgroundTransparency = 0.8,

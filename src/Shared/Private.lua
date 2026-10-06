@@ -41,13 +41,17 @@ local library = {}
 
 ----
 
--- visibility decides who sees a session in the list. Private is unlisted:
--- only the host, anyone already on its rosters, and the host's whitelist
-library.Visibilities = { "private", "friends", "public" }
+-- visibility decides who sees a session in the list, each adding to the
+-- last. Private is the host's whitelist (and anyone already on its
+-- rosters); friends adds the host's friends; open adds everyone in the same
+-- lobby server (other lobby servers still treat it as friends); public lists
+-- it to everyone everywhere, and is paid
+library.Visibilities = { "private", "friends", "open", "public" }
 
 library.VisibilityLabels = {
 	private = "PRIVATE",
 	friends = "FRIENDS",
+	open = "OPEN",
 	public = "PUBLIC",
 }
 

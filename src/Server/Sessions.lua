@@ -54,13 +54,15 @@
 --                               being looked up) or "empty" (nothing in it)
 --   "open", key                 open this mode's page (back from that game mode)
 --
--- Visibility: a private session is listed only to its host and the players
--- already in it (a tourney lobby's rosters, a free roam server's co-hosts);
--- friends to the host's friends; public to everyone. The host's whitelist
--- and anyone they invited see it whatever the visibility. The lists are per
+-- Visibility: a private session is listed only to its host, the players
+-- already in it (a tourney lobby's rosters, a free roam server's co-hosts)
+-- and the host's whitelist; friends adds the host's friends; open adds
+-- everyone in this lobby server; public everyone everywhere. The whitelist
+-- and anyone invited see it whatever the visibility. The lists are per
 -- player (friendship, whitelist), so each is one FireClient. Sessions in
 -- other lobby servers are listed too (Listings.lua), under the same rules
--- bar invites, with JOIN taking the player to the host's server.
+-- bar invites and open (which only reaches the host's own server), with
+-- JOIN taking the player to the host's server.
 
 local playersService = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -183,7 +185,8 @@ local function canSee(client, session, key)
 
 	local visibility = session:Visibility()
 
-	if visibility == "public" then
+	-- open: anyone in this lobby server
+	if visibility == "public" or visibility == "open" then
 		return true
 	elseif visibility == "friends" then
 		return isFriend(client, session.HostId)
@@ -199,9 +202,10 @@ local function canSeeRemote(client, record)
 		return true
 	end
 
+	-- open only reaches the host's own server; from here it's friends
 	if record.visibility == "public" then
 		return true
-	elseif record.visibility == "friends" then
+	elseif record.visibility == "friends" or record.visibility == "open" then
 		return isFriend(client, record.hostId)
 	end
 
