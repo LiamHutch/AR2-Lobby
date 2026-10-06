@@ -1377,45 +1377,6 @@ remotes.Directory.OnClientEvent:Connect(function(payload)
 	drawServers()
 end)
 
--- a paid VIP server sends everyone on to the host's own server, so the
--- browser stays hidden and only the status shows
-local function forwarding()
-	return replicatedStorage:GetAttribute("VipForward") == true
-end
-
-local function drawForwarding()
-	local on = forwarding()
-
-	local modeOpen = privateView ~= nil and privateView.IsOpen()
-
-	picker.Visible = not on and openMap == nil and not modeOpen
-	mapView.Visible = not on and openMap ~= nil
-
-	if privateView then
-		stage.ModeView.Visible = not on and modeOpen
-	end
-
-	if on then
-		setStatus("joining")
-	elseif statusBox.Visible and not joining then
-		setStatus(nil)
-	end
-end
-
-drawForwarding()
-replicatedStorage:GetAttributeChangedSignal("VipForward"):Connect(drawForwarding)
-
--- VIP is PC and console only, so a forwarding server waits to hear what
--- this client is on before sending it anywhere
-local function reportPlatform()
-	if forwarding() then
-		remotes.Platform:FireServer(here)
-	end
-end
-
-reportPlatform()
-replicatedStorage:GetAttributeChangedSignal("VipForward"):Connect(reportPlatform)
-
 remotes.Status.OnClientEvent:Connect(function(code, title)
 	setStatus(code)
 
@@ -1425,17 +1386,11 @@ remotes.Status.OnClientEvent:Connect(function(code, title)
 
 	if code == "teleporting" then
 		loading.Show(title)
-	elseif code == "joining" then
-		-- VIP forwards teleport without a Play, so they name the map here
-		if title then
-			loading.Prepare(title)
-		end
-	else
+	elseif code ~= "joining" then
 		loading.Hide()
 	end
 
-	-- while forwarding, a failure stays up until the server retries
-	if code ~= "joining" and code ~= "teleporting" and not forwarding() then
+	if code ~= "joining" and code ~= "teleporting" then
 		task.delay(3, function()
 			if not joining and statusBox.Text.Text == spaced(STATUS_TEXT[code] or "") then
 				setStatus(nil)

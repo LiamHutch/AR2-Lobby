@@ -106,24 +106,6 @@ return {
 	-- (the test directory doesn't label pool servers, so it can't prompt one)
 	POOL_REFRESH = 300,
 
-	-- paid VIP servers on the lobby place forward everyone to the host's own
-	-- reserved server on this map (VipForward.lua). The lobby records who the
-	-- host is, since a reserved server has no PrivateServerOwnerId:
-	--   VIP_HOSTS_STORE    DataStore, key = reserved PrivateServerId
-	--                      -> { v, hostId, placeId, createdAt }
-	--                      the game looks itself up here to learn its host
-	--   VIP_SERVERS_STORE  DataStore, key = "<placeId>:<hostId>"
-	--                      -> { v, hostId, placeId, accessCode, privateServerId, createdAt }
-	--                      one reserved server per host, reused forever
-	-- Arrivals carry TeleportData { source, v, kind = "vip", hostId }, which is
-	-- informational only: never trust it for who the host is
-	VIP_FORWARD_MAP = "Kin",
-	-- the game (branch kinvip, globals.getVIPHost) only accepts v == 1: bump
-	-- both sides together, and never with VERSION
-	VIP_VERSION = 1,
-	VIP_HOSTS_STORE = "LobbyVipHosts1",
-	VIP_SERVERS_STORE = "LobbyVipServers1",
-
 	-- private server sessions (Sessions.lua): every player hosts their own
 	-- tourney lobby and free roam server from the lobby. Each host's config is
 	-- lobby-owned (Shared/Private.lua has the shape):
