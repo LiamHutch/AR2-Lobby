@@ -443,7 +443,7 @@ return function(context)
 		if not row then
 			setText(footer.ServerName, "")
 			setText(footer.Meta, "")
-			setText(footer.Join.Label, openMode.Client and inviting and "INVITE" or "JOIN")
+			setText(footer.Join.Label, openMode.Client and inviting and "INVITE" or (openMode.Key == "Tourney" and "VIEW" or "JOIN"))
 			setEnabled(footer.Join, false)
 
 			return
@@ -477,7 +477,9 @@ return function(context)
 			setText(footer.Meta, table.concat(meta, "  ·  "))
 		end
 
-		setText(footer.Join.Label, row.Rejoin and "REJOIN" or "JOIN")
+		-- a tourney row opens its roster page, where JOIN lives; a free roam
+		-- row joins the server from here
+		setText(footer.Join.Label, row.Rejoin and "REJOIN" or (openMode.Key == "Tourney" and "VIEW" or "JOIN"))
 		setEnabled(footer.Join, not row.Full and not isJoining())
 	end
 
