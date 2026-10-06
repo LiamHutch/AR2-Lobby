@@ -36,9 +36,11 @@
 --                               or nil while loading
 --   "state", key, hostId, state what the panel shows (State), nil = gone
 --   "rejoin", info              a live match to go back to, once per server
---   "counts", tally, live       per mode: { Online, Sessions } of the listed
---                               sessions, for the tiles; live = which modes
---                               have a place in this universe
+--   "counts", tally, live       per mode: { Online, Sessions } of the
+--                               sessions this player could join (listed to
+--                               them, not their own, not full or locked
+--                               against them), for the tiles; live = which
+--                               modes have a place in this universe
 --   "friends", rows             Friends.lua rows
 --   "follow", userId, key?      open this friend's session (they sent you or
 --                               invited you); key says which mode
@@ -271,27 +273,44 @@ function sendList(client, key)
 	end
 end
 
--- the tiles' numbers: everyone listed (not private) and who's in them
+-- the tiles' numbers for one player: the sessions they could join up on
+-- (listed to them, not their own, not full, not locked against them) and
+-- who's in them
 local countsQueued = false
 
-local function tally()
+-- a locked free roam server still takes the host's whitelist (and co-hosts,
+-- which only the local session knows)
+local function joinable(key, row, allowed)
+	if row.Full then
+		return false
+	end
+
+	return not row.Locked or (key == "Freeroam" and allowed)
+end
+
+local function tally(client)
 	local counts = {}
 
 	for key, byHost in sessions do
 		local online, listed = 0, 0
 
 		for _, session in byHost do
-			if session:Visibility() ~= "private" then
-				listed += 1
-				local row = session:Row(nil)
-				online += row.Players or 0
+			if not session:IsHost(client) and canSee(client, session, key) then
+				local row = session:Row(client)
+
+				if joinable(key, row, session.MayEnter ~= nil and session:MayEnter(client)) then
+					listed += 1
+					online += row.Players or 0
+				end
 			end
 		end
 
 		for hostId, record in listings:Remote(key) do
-			if not byHost[hostId] and record.visibility ~= "private" then
-				listed += 1
-				online += record.row.Players or 0
+			if not byHost[hostId] and hostId ~= client.UserId and canSeeRemote(client, record) then
+				if joinable(key, record.row, listings:Whitelisted(record, client.UserId)) then
+					listed += 1
+					online += record.row.Players or 0
+				end
 			end
 		end
 
@@ -323,7 +342,7 @@ local function sendCounts(client)
 	end
 
 	if client.Parent then
-		remote:FireClient(client, "counts", tally(), live)
+		remote:FireClient(client, "counts", tally(client), live)
 	end
 end
 
