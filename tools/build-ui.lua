@@ -577,7 +577,7 @@ local function buildPicker()
 			Name = "Logo",
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.new(0.5, 0, 0, 20),
-			Size = UDim2.fromOffset(244, 80),
+			Size = UDim2.fromOffset(290, 95),
 			BackgroundTransparency = 1,
 			Image = LOGO,
 			ScaleType = Enum.ScaleType.Fit,

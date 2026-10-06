@@ -1336,13 +1336,10 @@ return function(context)
 			context.openMode("Friends")
 		end)
 
-		bindButton(hub.News, function()
-			context.openMode("News")
-		end)
-
-		bindButton(hub.Events, function()
-			context.openMode("Events")
-		end)
+		-- news and events are greyed out until their pages exist (the
+		-- Coming Soon screens stay reachable through openMode for then)
+		setEnabled(hub.News, false)
+		setEnabled(hub.Events, false)
 	end
 
 	bindFooter()
