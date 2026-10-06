@@ -1,7 +1,7 @@
 -- Paid visibility: a public private-server needs an active subscription
--- (Private.PublicSubscriptionId, a SubscriptionService id). Friends and
--- private are free. With no id configured, public is free too, so a test
--- lobby works before the subscription exists.
+-- (Private.PublicSubscriptionIds, SubscriptionService ids: one for the prod
+-- lobby, one for the test lobby). Friends and private are free. With no id
+-- configured, public is free too.
 --
 -- Checks go through MarketplaceService:GetUserSubscriptionStatusAsync, cached
 -- per player for STATUS_CACHE seconds; a failed check keeps the last answer,
@@ -28,12 +28,12 @@ library.Changed = Instance.new("BindableEvent")
 ----
 
 function library:Id()
-	return private.PublicSubscriptionId
+	return private:PublicSubscriptionId()
 end
 
 -- whether the client may set a session public
 function library:CanPublic(client)
-	local id = private.PublicSubscriptionId
+	local id = private:PublicSubscriptionId()
 
 	if not id then
 		return true
@@ -65,7 +65,7 @@ end
 
 -- asks the client to open the subscription purchase prompt
 function library:Offer(client, remote)
-	local id = private.PublicSubscriptionId
+	local id = private:PublicSubscriptionId()
 
 	if id and client.Parent then
 		remote:FireClient(client, "subscribe", id)
@@ -79,7 +79,7 @@ end
 ----
 
 marketplaceService.PromptSubscriptionPurchaseFinished:Connect(function(client, id, purchased)
-	if id == private.PublicSubscriptionId then
+	if id == private:PublicSubscriptionId() then
 		cache[client] = nil
 		library.Changed:Fire(client)
 	end

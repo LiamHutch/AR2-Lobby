@@ -48,10 +48,19 @@ library.VisibilityLabels = {
 
 library.DefaultVisibility = "private"
 
--- public is paid: the SubscriptionService id (an "EXP-..." string) a host
--- needs an active subscription to, checked by Server/Subscriptions. nil
--- (no subscription set up yet) leaves public free
-library.PublicSubscriptionId = nil
+-- public is paid: the SubscriptionService ids a host needs an active
+-- subscription to, checked by Server/Subscriptions; the test lobby (the
+-- AR2 Development Hub's place) uses the dev one. nil leaves public free
+library.PublicSubscriptionIds = {
+	prod = "EXP-4749682403386196533",
+	test = "EXP-466912041412723193",
+}
+
+function library:PublicSubscriptionId()
+	local protocol = require(script.Parent.Protocol)
+
+	return self.PublicSubscriptionIds[game.PlaceId == protocol.TEST_LOBBY_PLACE_ID and "test" or "prod"]
+end
 
 -- team colours a host picks from; a team stores the index
 library.TeamColors = {

@@ -360,10 +360,18 @@ return function(context)
 					chipOn(chip, state.Visibility == visibility)
 
 					-- public is paid: a host without the subscription sees it
-					-- faded, and a press opens the purchase prompt
-					if visibility == "public" and state.CanPublic == false then
-						chip.Label.TextTransparency = 0.7
-						chip.Stroke.Transparency = 0.9
+					-- in gold, the lobby's colour for the paid-for, and a press
+					-- opens the purchase prompt
+					if visibility == "public" then
+						local locked = state.CanPublic == false
+
+						chip.Stroke.Color = locked and GOLD or BONE
+						chip.Label.TextColor3 = locked and GOLD or BONE
+
+						if locked then
+							chip.Label.TextTransparency = 0.15
+							chip.Stroke.Transparency = 0.3
+						end
 					end
 				end
 			end
