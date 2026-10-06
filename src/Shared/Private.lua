@@ -46,7 +46,7 @@ library.VisibilityLabels = {
 	public = "PUBLIC",
 }
 
-library.DefaultVisibility = "private"
+library.DefaultVisibility = "friends"
 
 -- public is paid: the SubscriptionService ids a host needs an active
 -- subscription to, checked by Server/Subscriptions; the test lobby (the
