@@ -17,7 +17,8 @@ library.__index = library
 
 ----
 
-local ASPECT = 16 / 9 -- every map image is 1024x576
+local ASPECT = 16 / 9 -- the map images are 1024x576; a show can be given another
+library.ASPECT = ASPECT
 
 -- the undarkened focal area, as a share of the image's width and height
 local FOCUS_WIDTH = 0.83

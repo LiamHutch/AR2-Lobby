@@ -12,7 +12,9 @@
 --   Tags       { text, colour? } pairs on the tile, like a map's
 --   Platforms  support per platform key, like a map's (Platform.lua)
 --   Icon       vector art for the tile
---   Images     the mode view's preview slideshow (1024x576)
+--   Images     the mode view's preview slideshow, 1024x576 unless ImageAspect
+--              says otherwise (width / height), with ImageFocus the share of
+--              each image to keep in frame (Slideshow.lua)
 --   PlaceIds   every place that runs this mode, in the order to prefer them:
 --              the lobby uses the first one in its own universe. The test
 --              universe has both a Test - Prod and a Development copy, and the
@@ -116,6 +118,9 @@ library.Modes = {
 			Mobile = "blocked",
 		},
 		Icon = "rbxassetid://77592314681741",
+		-- the tourney art is 1024x1024: fit its width, the frame crops top and bottom
+		ImageAspect = 1,
+		ImageFocus = { 1, 1 },
 		Images = {
 			"rbxassetid://105285500939800", -- Ward
 			"rbxassetid://117356394719262", -- Swamp

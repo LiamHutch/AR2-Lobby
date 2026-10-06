@@ -208,8 +208,24 @@ return function(context)
 	local function showImages(images)
 		local clip = info.Preview.Clip
 
+		-- the show's image plane is cut to one aspect, so a mode whose art is
+		-- a different shape gets a fresh show
+		local aspect = openMode and openMode.ImageAspect or nil
+
+		if preview and preview.aspect ~= (aspect or slideshow.ASPECT) then
+			preview:Destroy()
+			preview = nil
+			previewImages = nil
+		end
+
 		if not preview then
-			preview = slideshow.new(clip, { interval = SLIDE, zIndex = 1, onChange = drawDots })
+			preview = slideshow.new(clip, {
+				interval = SLIDE,
+				zIndex = 1,
+				onChange = drawDots,
+				aspect = aspect,
+				focus = openMode and openMode.ImageFocus or nil,
+			})
 		end
 
 		-- the same set keeps playing; a new one restarts the show
