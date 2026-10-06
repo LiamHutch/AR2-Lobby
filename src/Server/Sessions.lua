@@ -55,6 +55,7 @@ local teleports = require(script.Parent.Teleports)
 local friendsLibrary = require(script.Parent.Friends)
 local invites = require(script.Parent.Invites)
 local subscriptions = require(script.Parent.Subscriptions)
+local catalog = require(script.Parent.Catalog)
 
 local remote = replicatedStorage.Remotes.Private
 
@@ -242,11 +243,25 @@ local function tally()
 	return counts
 end
 
+-- on the test lobby the private modes take the same testing permissions as
+-- its maps: a group role in one of these tiers. The prod lobby is open to all
+local TEST_ACCESS = { "Tester", "Staff", "Developer" }
+
+-- whether this client may use a mode here: its place is in this universe,
+-- and on the test lobby they hold a testing role
+local function allowed(client, key)
+	if not places[key] then
+		return false
+	end
+
+	return not catalog.IsTest or catalog:CanSee(client, { Access = TEST_ACCESS })
+end
+
 local function sendCounts(client)
 	local live = {}
 
 	for key in sessions do
-		live[key] = places[key] ~= nil
+		live[key] = allowed(client, key)
 	end
 
 	if client.Parent then
@@ -618,6 +633,16 @@ function library:Start(directory)
 		local now = os.clock()
 
 		if (action == "act" or action == "friends" or action == "follow") and now - (lastAct[client] or 0) < ACT_GAP then
+			return
+		end
+
+		-- the mode actions take the mode as their first argument; the tile is
+		-- hidden without permission, so this only stops a forged message
+		if (action == "open" or action == "view" or action == "act" or action == "invite") and not allowed(client, (...)) then
+			return
+		end
+
+		if action == "rejoin" and not allowed(client, "Tourney") then
 			return
 		end
 
