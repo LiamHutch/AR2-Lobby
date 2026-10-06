@@ -54,6 +54,7 @@ local freeroam = require(script.Parent.Freeroam)
 local teleports = require(script.Parent.Teleports)
 local friendsLibrary = require(script.Parent.Friends)
 local invites = require(script.Parent.Invites)
+local subscriptions = require(script.Parent.Subscriptions)
 
 local remote = replicatedStorage.Remotes.Private
 
@@ -301,7 +302,14 @@ local function sendState(client)
 	local session = sessions[view.Key][view.HostId]
 
 	if session and canSee(client, session, view.Key) then
-		remote:FireClient(client, "state", view.Key, view.HostId, session:State(client))
+		local state = session:State(client)
+
+		-- the host's own view: whether public is open to them
+		if state and state.Mine then
+			state.CanPublic = subscriptions:CanPublic(client)
+		end
+
+		remote:FireClient(client, "state", view.Key, view.HostId, state)
 	else
 		remote:FireClient(client, "state", view.Key, view.HostId, nil)
 	end
@@ -358,6 +366,11 @@ local function ensureSession(client, key)
 		session = class.new(client, saved, sync, places[key])
 		sessions[key][userId] = session
 
+		-- a public session whose host's subscription lapsed drops to friends
+		if session:Visibility() == "public" and client.Parent and not subscriptions:CanPublic(client) then
+			session:Act(client, "visibility", "friends")
+		end
+
 		if creating[client] then
 			creating[client][key] = nil
 		end
@@ -388,6 +401,15 @@ local function lookupRejoin(client)
 end
 
 ----
+
+-- a purchase prompt closing: the host's own view shows the new answer
+subscriptions.Changed.Event:Connect(function(client)
+	local view = viewing[client]
+
+	if view and view.HostId == client.UserId then
+		sendState(client)
+	end
+end)
 
 local handlers = {}
 
@@ -441,6 +463,13 @@ function handlers.act(client, key, hostId, action, ...)
 	local session = sessions[key][hostId]
 
 	if not session or not canSee(client, session, key) then
+		return
+	end
+
+	-- public is paid: without the subscription, the purchase prompt instead
+	if action == "visibility" and (...) == "public" and not subscriptions:CanPublic(client) then
+		subscriptions:Offer(client, remote)
+
 		return
 	end
 

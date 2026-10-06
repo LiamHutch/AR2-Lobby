@@ -48,6 +48,11 @@ library.VisibilityLabels = {
 
 library.DefaultVisibility = "private"
 
+-- public is paid: the SubscriptionService id (an "EXP-..." string) a host
+-- needs an active subscription to, checked by Server/Subscriptions. nil
+-- (no subscription set up yet) leaves public free
+library.PublicSubscriptionId = nil
+
 -- team colours a host picks from; a team stores the index
 library.TeamColors = {
 	Color3.fromRGB(127, 57, 57),

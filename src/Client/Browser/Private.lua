@@ -8,6 +8,7 @@
 -- buttons, sounds, the edge fades) and keeps the picker/map view switching;
 -- this only owns ModeView and the mode cards.
 
+local marketplaceService = game:GetService("MarketplaceService")
 local playersService = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
 local socialService = game:GetService("SocialService")
@@ -357,6 +358,13 @@ return function(context)
 
 				if chip then
 					chipOn(chip, state.Visibility == visibility)
+
+					-- public is paid: a host without the subscription sees it
+					-- faded, and a press opens the purchase prompt
+					if visibility == "public" and state.CanPublic == false then
+						chip.Label.TextTransparency = 0.7
+						chip.Stroke.Transparency = 0.9
+					end
 				end
 			end
 		end
@@ -1504,6 +1512,13 @@ return function(context)
 			elseif panel == "list" then
 				drawList()
 			end
+		elseif message == "subscribe" then
+			-- public visibility needs the subscription: the purchase prompt
+			local id = ...
+
+			pcall(function()
+				marketplaceService:PromptSubscriptionPurchase(localPlayer, id)
+			end)
 		elseif message == "invite" then
 			library.ShowInvite(...)
 		elseif message == "invited" then
