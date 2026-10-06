@@ -557,6 +557,12 @@ end
 
 ----
 
+-- the picker row: the cards (480 tall) centred in it, so the scroll bar on
+-- its bottom edge sits ROW_GAP below them, like the footer below the bar
+local CARD_HEIGHT = 480
+local ROW_GAP = 24
+local ROW_HEIGHT = CARD_HEIGHT + 2 * (ROW_GAP + 3)
+
 local function buildPicker()
 	-- the bottom screen: under MapView and ModeView whatever the child order
 	return make("Frame", {
@@ -580,7 +586,7 @@ local function buildPicker()
 		edgeFade({
 			AnchorPoint = Vector2.new(0, 0.5),
 			Position = UDim2.new(0, 0, 0.5, -10),
-			Size = UDim2.new(1, 0, 0, 560),
+			Size = UDim2.new(1, 0, 0, ROW_HEIGHT),
 		}, make("ScrollingFrame", {
 			Name = "Maps",
 			BackgroundTransparency = 1,
@@ -608,16 +614,17 @@ local function buildPicker()
 			}),
 		})),
 
-		-- the hub pages, a static footer under the row (Status sits below it)
+		-- the hub pages, a static footer ROW_GAP under the row (Status sits
+		-- below it)
 		make("Frame", {
 			Name = "Footer",
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -64),
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0.5, -10 + ROW_HEIGHT / 2 + ROW_GAP),
 			Size = UDim2.new(1, -128, 0, 45),
 			BackgroundTransparency = 1,
 		}, {
 			list(Enum.FillDirection.Horizontal, 12, { HorizontalAlignment = Enum.HorizontalAlignment.Center }),
-			ordered(textButton("Friends", UDim2.fromOffset(240, 45), "FIND FRIENDS", PLAY_GOLD), 1),
+			ordered(textButton("Friends", UDim2.fromOffset(170, 45), "FRIENDS", BONE), 1),
 			ordered(textButton("News", UDim2.fromOffset(170, 45), "NEWS", BONE), 2),
 			ordered(textButton("Events", UDim2.fromOffset(170, 45), "EVENTS", BONE), 3),
 		}),
