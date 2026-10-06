@@ -571,12 +571,12 @@ local function buildPicker()
 		BackgroundTransparency = 1,
 		ZIndex = 0,
 	}, {
-		-- the game's logo, top right, well away from Roblox's buttons in the
+		-- the game's logo, top centre, clear of Roblox's buttons in the
 		-- top-left corner
 		make("ImageLabel", {
 			Name = "Logo",
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, -64, 0, 20),
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 20),
 			Size = UDim2.fromOffset(244, 80),
 			BackgroundTransparency = 1,
 			Image = LOGO,
