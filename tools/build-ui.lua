@@ -32,6 +32,8 @@ local BONE = Color3.fromRGB(229, 226, 219)
 local GOLD = Color3.fromRGB(202, 188, 131)
 -- Play's gold, brighter than the game's so the main action stands out
 local PLAY_GOLD = Color3.fromRGB(236, 210, 120)
+-- the picker footer's hub pages: quieter than the cards' Play above them
+local MUTED = Color3.fromRGB(184, 181, 174)
 local GREY = Color3.fromRGB(177, 177, 177)
 local PANEL = Color3.fromRGB(27, 27, 27)
 local NAV = Color3.fromRGB(18, 18, 21) -- the game's nav bar
@@ -259,11 +261,14 @@ local function button(name, size, stroke, tint, content)
 	})
 end
 
--- gold by default; pass BONE for the plain white ones (Join, the card's Play)
+-- gold by default; pass BONE for the plain white one (Join) or MUTED for the
+-- footer's grey ones; the grunge takes the button's own colour then
 local function textButton(name, size, label, color)
 	color = color or GOLD
 
-	return button(name, size, color, color == BONE and BONE or Color3.fromRGB(255, 193, 138), text("Label", {
+	local tint = (color == BONE or color == MUTED) and color or Color3.fromRGB(255, 193, 138)
+
+	return button(name, size, color, tint, text("Label", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 0.8),
@@ -624,9 +629,9 @@ local function buildPicker()
 			BackgroundTransparency = 1,
 		}, {
 			list(Enum.FillDirection.Horizontal, 12, { HorizontalAlignment = Enum.HorizontalAlignment.Center }),
-			ordered(textButton("Friends", UDim2.fromOffset(170, 45), "FRIENDS", BONE), 1),
-			ordered(textButton("News", UDim2.fromOffset(170, 45), "NEWS", BONE), 2),
-			ordered(textButton("Events", UDim2.fromOffset(170, 45), "EVENTS", BONE), 3),
+			ordered(textButton("Friends", UDim2.fromOffset(170, 45), "FRIENDS", MUTED), 1),
+			ordered(textButton("News", UDim2.fromOffset(170, 45), "NEWS", MUTED), 2),
+			ordered(textButton("Events", UDim2.fromOffset(170, 45), "EVENTS", MUTED), 3),
 		}),
 	})
 end
@@ -1591,7 +1596,7 @@ local function cardTemplate()
 
 		-- one tap into a game, over the card's own hitbox
 		(function()
-			local object = textButton("Play", UDim2.fromOffset(126, 45), "PLAY", BONE)
+			local object = textButton("Play", UDim2.fromOffset(126, 45), "PLAY", PLAY_GOLD)
 			object.AnchorPoint = Vector2.new(1, 1)
 			object.Position = UDim2.new(1, -21, 1, -20)
 			object.ZIndex = 11
