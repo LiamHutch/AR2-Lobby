@@ -160,6 +160,12 @@ library.Modes = {
 			{ Key = "scoreMode", Label = "Score mode", Default = "bestOf", Options = { { "bestOf", "Best of" }, { "firstTo", "First to" } } },
 			{ Key = "rounds", Label = "Number of rounds", Default = 5, Options = range({ 1, 2, 3, 5, 10, 15, 20 }, "rounds") },
 			{ Key = "countdown", Label = "Start countdown", Default = 10, Options = range({ 5, 10, 15, 20, 30, 60 }, "seconds") },
+			-- with this share of the players ready, the match starts after the
+			-- ready countdown whether or not the rest ready up; the stragglers
+			-- are spawned in and the round waits the grace for them
+			{ Key = "readyShare", Label = "Ready to start", Default = 0.75, Options = { { 0.5, "Half ready" }, { 0.75, "3/4 ready" }, { 1, "Everyone ready" } } },
+			{ Key = "readyCountdown", Label = "Ready countdown", Default = 90, Options = range({ 30, 60, 90, 120, 180 }, "seconds") },
+			{ Key = "forceSpawnWait", Label = "Spawn-in grace", Default = 15, Options = range({ 5, 10, 15, 20, 30 }, "seconds") },
 			{ Key = "roundLength", Label = "Round length", Default = 10, Options = range({ 2, 5, 10, 15, 20, 30 }, "minutes") },
 			{ Key = "timeOfDay", Label = "Time of day", Default = "afternoon", Options = TIMES },
 			{ Key = "dayLength", Label = "Day length", Default = 1, Options = { { 0, "0x" }, { 0.5, "0.5x" }, { 1, "1x" }, { 2, "2x" }, { 3, "3x" } } },
