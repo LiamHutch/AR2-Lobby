@@ -64,6 +64,10 @@ local function write(id, entry)
 
 	if not worked then
 		warn("Lobby couldn't list a session", id, why)
+	elseif not published[id] then
+		-- retracted while this write was out: it would otherwise sit there
+		-- for the whole TTL
+		pcall(map.RemoveAsync, map, id)
 	end
 end
 
@@ -75,6 +79,14 @@ function library:Publish(key, hostId, hostName, listing)
 	end
 
 	local id = idFor(key, hostId)
+
+	-- readers fill these from the record (Sessions sendList), so they'd only
+	-- take up MemoryStore space
+	local row = table.clone(listing.Row)
+	row.HostId = nil
+	row.Host = nil
+	row.Mine = nil
+
 	local record = {
 		v = protocol.LISTING_VERSION,
 		key = key,
@@ -85,7 +97,7 @@ function library:Publish(key, hostId, hostName, listing)
 		at = os.time(),
 		visibility = listing.Visibility,
 		whitelist = listing.Whitelist,
-		row = listing.Row,
+		row = row,
 	}
 
 	local entry = published[id]

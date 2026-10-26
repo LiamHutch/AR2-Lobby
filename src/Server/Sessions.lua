@@ -388,11 +388,61 @@ local function broadcastList(key)
 	broadcastCounts()
 end
 
+-- whether the other lobby servers get a session's record. Every player who
+-- opens a mode gets a session, and listing them all overran the universe's
+-- MemoryStore quota at peak (2026-10-26), so only one someone could use:
+-- its host has the mode's page open, or others are in it (a tourney lobby's
+-- rosters, a running free roam server); and someone elsewhere may see it,
+-- which a private session with an empty whitelist rules out
+local function worthListing(key, session, listed)
+	if listed.Visibility == "private" and #listed.Whitelist == 0 then
+		return false
+	end
+
+	if listing[session.Host] == key then
+		return true
+	end
+
+	if key == "Tourney" then
+		for _, client in session:Members() do
+			if client ~= session.Host then
+				return true
+			end
+		end
+
+		return false
+	end
+
+	return listed.Row.Running == true
+end
+
+local function updateListing(key, session)
+	local listed = session:Listing()
+
+	if worthListing(key, session, listed) then
+		listings:Publish(key, session.HostId, session.HostName, listed)
+	else
+		listings:Retract(key, session.HostId)
+	end
+end
+
+-- a host opening or closing a mode's page: their own sessions are listed or
+-- retracted to match
+local function relistOwn(client)
+	for key, byHost in sessions do
+		local own = byHost[client.UserId]
+
+		if own then
+			updateListing(key, own)
+		end
+	end
+end
+
 -- a local session changed in a way its row shows: the other servers get the
 -- new record, and the lists here go out
 local function publishList(key, session)
 	if session then
-		listings:Publish(key, session.HostId, session.HostName, session:Listing())
+		updateListing(key, session)
 	end
 
 	broadcastList(key)
@@ -545,6 +595,7 @@ function handlers.open(client, key)
 
 	listing[client] = key
 
+	relistOwn(client)
 	loadFriends(client)
 	ensureSession(client, key)
 	sendList(client, key)
@@ -556,6 +607,7 @@ end
 
 function handlers.close(client)
 	listing[client] = nil
+	relistOwn(client)
 	viewing[client] = nil
 end
 
