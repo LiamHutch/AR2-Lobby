@@ -37,6 +37,7 @@ local HANDOFF_TRIES = 3
 -- unpublished Studio can't reserve servers or reach stores
 local offline = runService:IsStudio() and game.GameId == 0
 
+local handoffStore = not offline and dataStoreService:GetDataStore(protocol.TOURNEY_HANDOFF_STORE)
 local handoffs = not offline and memoryStores:GetHashMap(protocol.TOURNEY_HANDOFF_MAP)
 local sessions = not offline and dataStoreService:GetDataStore(protocol.TOURNEY_SESSIONS_STORE)
 local legacy = not offline and dataStoreService:GetDataStore(protocol.TOURNEY_LEGACY_STORE)
@@ -190,6 +191,19 @@ local function legacyHandoff(self, accessCode, serverId, placeId)
 		Settings = table.clone(settings),
 		MapNames = mapNames,
 	}
+end
+
+-- one handoff write, tried HANDOFF_TRIES times; true once it's in
+local function storeHandoff(write)
+	for attempt = 1, HANDOFF_TRIES do
+		if pcall(write) then
+			return true
+		end
+
+		task.wait(attempt)
+	end
+
+	return false
 end
 
 ----
@@ -717,24 +731,22 @@ function class:Commit()
 
 	local handoff = legacyHandoff(self, accessCode, serverId, self.PlaceId)
 
-	-- the match server reads its config here by its PrivateServerId; a client
-	-- could edit the teleport data copy, so this one wins. If it can't be
+	-- the match server reads its config by its PrivateServerId from the
+	-- DataStore, then from the old MemoryStore map, which is written too until
+	-- the tourney place runs a build that reads the DataStore. A client could
+	-- edit the teleport data copy, so a stored one wins. If neither can be
 	-- stored the match still starts and the server falls back to the host's upload
-	if handoffs and not runService:IsStudio() then
-		local stored = false
+	if handoffStore and not runService:IsStudio() then
+		local stored = storeHandoff(function()
+			handoffStore:SetAsync(serverId, handoff)
+		end)
 
-		for attempt = 1, HANDOFF_TRIES do
-			stored = pcall(handoffs.SetAsync, handoffs, serverId, handoff, protocol.TOURNEY_HANDOFF_TTL)
+		local mapped = storeHandoff(function()
+			handoffs:SetAsync(serverId, handoff, protocol.TOURNEY_HANDOFF_TTL)
+		end)
 
-			if stored then
-				break
-			end
-
-			task.wait(attempt)
-		end
-
-		if not stored then
-			warn("Lobby couldn't store the match handoff, the match server will use the host's teleport data")
+		if not (stored and mapped) then
+			warn("Lobby couldn't store the match handoff (DataStore:", stored, "MemoryStore:", mapped, "), the match server may use the host's teleport data")
 		end
 	end
 

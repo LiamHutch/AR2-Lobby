@@ -123,8 +123,13 @@ return {
 	-- game stores the private modes still talk through. Their shapes are the
 	-- game's (Tourney.lua and Freeroam.lua adapt to them); once the game reads
 	-- the lobby's config directly these go
-	--   TOURNEY_HANDOFF_MAP     MemoryStore hash map, key = the reserved match
-	--                           server's PrivateServerId -> the match config
+	--   TOURNEY_HANDOFF_STORE   DataStore, key = the reserved match server's
+	--                           PrivateServerId -> the match config; the match
+	--                           server reads it once at boot and removes it on
+	--                           close (game: HubProtocol.TOURNEY_HANDOFF_STORE)
+	--   TOURNEY_HANDOFF_MAP     the same in a MemoryStore hash map, its old home.
+	--                           Still written until the tourney place runs a
+	--                           build that reads the DataStore, then it goes
 	--   TOURNEY_SESSIONS_STORE  DataStore, key = userId -> { PlaceId, AccessCode,
 	--                           ServerId, WrittenAt }, written by a running
 	--                           match server so a player can rejoin it
@@ -141,6 +146,7 @@ return {
 	--                           config shape; read once to seed a host's record
 	--   FREEROAM_LOBBIES_MAP    MemoryStore hash map, key = hostId -> live data a
 	--                           running free roam server writes every 15s
+	TOURNEY_HANDOFF_STORE = "TourneyHandoffs1",
 	TOURNEY_HANDOFF_MAP = "Tourney Match Handoff",
 	-- the match server reads it once at boot, seconds after the start. Not the
 	-- old VIP lobby's 24h: every player can start matches now, and a day of
