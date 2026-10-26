@@ -142,7 +142,10 @@ return {
 	--   FREEROAM_LOBBIES_MAP    MemoryStore hash map, key = hostId -> live data a
 	--                           running free roam server writes every 15s
 	TOURNEY_HANDOFF_MAP = "Tourney Match Handoff",
-	TOURNEY_HANDOFF_TTL = 24 * 60 * 60,
+	-- the match server reads it once at boot, seconds after the start. Not the
+	-- old VIP lobby's 24h: every player can start matches now, and a day of
+	-- ~1.6 KB handoffs can fill the universe's MemoryStore quota
+	TOURNEY_HANDOFF_TTL = 15 * 60,
 	TOURNEY_SESSIONS_STORE = "Tourney Sessions",
 	TOURNEY_SESSION_MAX_AGE = 12 * 60 * 60,
 	TOURNEY_LEGACY_STORE = "VIP Match Configs 3",
@@ -150,15 +153,18 @@ return {
 	FREEROAM_CONFIGS_STORE = "Freeroam Configs - 4",
 	FREEROAM_LOBBIES_MAP = "Freeroam Lobbies - 4",
 
-	-- cross-server session listings (Listings.lua): the lobby server hosting
-	-- a session writes its record to this MemoryStore sorted map, key
-	-- "<mode key>:<hostId>", while it lives, rewritten on change and every
-	-- LISTING_REFRESH seconds with LISTING_TTL; every lobby server lists the
-	-- map each LISTING_POLL and shows the other servers' sessions
-	LISTINGS_MAP = "LobbySessions1",
-	LISTING_VERSION = 1,
-	LISTING_TTL = 90,
-	LISTING_REFRESH = 30,
+	-- cross-server session listings (Listings.lua, shapes there): a DataStore
+	-- sharded like the directory, one entry per lobby server hosting sessions
+	-- others may see. Rewritten LISTING_WRITE_GAP after a change and every
+	-- LISTING_REFRESH, cold after LISTING_STALE; every lobby server reads the
+	-- shards each LISTING_POLL. Was the MemoryStore sorted map LobbySessions1
+	LISTINGS_STORE = "LobbySessions2",
+	LISTING_SHARD_PREFIX = "shard-",
+	LISTING_SHARDS = 4,
+	LISTING_VERSION = 2,
+	LISTING_WRITE_GAP = 15,
+	LISTING_REFRESH = 60,
+	LISTING_STALE = 180,
 	LISTING_POLL = 30,
 
 	-- lobby-to-lobby invites (Invites.lua): a MessagingService topic per player,
